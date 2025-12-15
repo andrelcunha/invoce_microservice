@@ -19,4 +19,8 @@
     <Folder Include="Extensions/" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../InvoiceMicroservice.Infrastructure/InvoiceMicroservice.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>

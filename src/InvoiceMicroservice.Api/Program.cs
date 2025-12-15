@@ -10,6 +10,8 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         // Add services to the container.
+        builder.Services.AddEFConfiguration(builder.Configuration);
+
         builder.Services.AddAuthorization();
 
         builder.Services.AddOpenApiConfiguration();
