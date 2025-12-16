@@ -14,6 +14,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUi" Version="9.0.6" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../InvoiceMicroservice.Application/InvoiceMicroservice.Application.csproj" />
     <ProjectReference Include="../InvoiceMicroservice.Infrastructure/InvoiceMicroservice.Infrastructure.csproj" />
   </ItemGroup>
 

@@ -16,8 +16,9 @@ public static class EFConfig
                         maxRetryCount: 5,
                         maxRetryDelay: TimeSpan.FromSeconds(10),
                         errorCodesToAdd: null);
-                }));
-
+                }
+            )
+        );
         return services;
     }
 }
