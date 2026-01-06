@@ -6,11 +6,10 @@ namespace InvoiceMicroservice.Infrastructure.Data;
 
 public class InvoiceDbContext : DbContext
 {
-    public InvoiceDbContext(DbContextOptions<InvoiceDbContext> options) : base(options)
-    {
-    }
+    public InvoiceDbContext(DbContextOptions<InvoiceDbContext> options) : base(options) { }
 
-    public DbSet<Invoice> Invoices { get; set; } = null!;
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<ServiceTypeTaxMapping> ServiceTypeTaxMappings => Set<ServiceTypeTaxMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,5 +59,72 @@ public class InvoiceDbContext : DbContext
             invoice.HasIndex(i => i.IssuerCnpj);
             invoice.HasIndex(i => i.ExternalInvoiceId);
             invoice.HasIndex(i => new { i.Status, i.CreatedAt });
+
+        // ServiceTypeTaxMapping configuration
+        modelBuilder.Entity<ServiceTypeTaxMapping>(entity =>
+        {
+            entity.ToTable("service_type_tax_mappings");
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.Id)
+                .HasColumnName("id")
+                .ValueGeneratedOnAdd();
+            
+            entity.Property(e => e.ServiceTypeKey)
+                .HasColumnName("service_type_key")
+                .HasMaxLength(100)
+                .IsRequired();
+            
+            entity.Property(e => e.CnaeCode)
+                .HasColumnName("cnae_code")
+                .HasMaxLength(20)
+                .IsRequired();
+            
+            entity.Property(e => e.Description)
+                .HasColumnName("description")
+                .HasMaxLength(500)
+                .IsRequired();
+            
+            entity.Property(e => e.NbsCode)
+                .HasColumnName("nbs_code")
+                .HasMaxLength(20)
+                .IsRequired();
+            
+            entity.Property(e => e.ServiceListCode)
+                .HasColumnName("service_list_code")
+                .HasMaxLength(10)
+                .IsRequired();
+            
+            entity.Property(e => e.OperationIndicator)
+                .HasColumnName("operation_indicator")
+                .HasMaxLength(10)
+                .IsRequired();
+            
+            entity.Property(e => e.TaxSituationCode)
+                .HasColumnName("tax_situation_code")
+                .HasMaxLength(10)
+                .IsRequired();
+            
+            entity.Property(e => e.TaxClassificationCode)
+                .HasColumnName("tax_classification_code")
+                .HasMaxLength(10)
+                .IsRequired();
+            
+            entity.Property(e => e.IsActive)
+                .HasColumnName("is_active")
+                .HasDefaultValue(true);
+            
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("now() at time zone 'utc'");
+            
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at");
+            
+            // Indexes
+            entity.HasIndex(e => e.ServiceTypeKey).IsUnique();
+            entity.HasIndex(e => e.CnaeCode);
+            entity.HasIndex(e => new { e.IsActive, e.ServiceTypeKey });
+        });
     }
 }
