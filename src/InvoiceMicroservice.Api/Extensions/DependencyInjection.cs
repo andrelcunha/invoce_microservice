@@ -9,6 +9,7 @@ public static class DependencyInjection
     public static IServiceCollection AddDependencyInjection(this IServiceCollection services)
     {
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
+        services.AddScoped<IServiceTypeTaxMappingRepository, ServiceTypeTaxMappingRepository>();
         services.AddScoped<IIpmXmlBuilder, IpmXmlBuilder>();
         return services;
     }

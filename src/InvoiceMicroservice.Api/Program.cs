@@ -1,10 +1,9 @@
-
 using System.Text.Json;
 using FluentValidation;
 using InvoiceMicroservice.Api.Extensions;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Entities;
-using InvoiceMicroservice.Infrastructure.Repositories;
+using InvoiceMicroservice.Domain.Repositories;
 
 namespace InvoiceMicroservice.Api;
 
@@ -51,20 +50,20 @@ public class Program
                 return Results.ValidationProblem(validationResult.ToDictionary());
             }
 
-            
-            var invoice = new Invoice
-            {
-                ClientId = command.ClientId,
-                IssuerCnpj = new Domain.ValueObjects.Cnpj(command.Data.Issuer.Cnpj),
-                Amount = command.Data.Amount,
-                ServiceDescription = command.Data.ServiceDescription,
+            var issuerCnpj = new Domain.ValueObjects.Cnpj(command.Data.Issuer.Cnpj);
+            var issuerJson = JsonSerializer.Serialize(command.Data.Issuer);
+            var consumerJson = JsonSerializer.Serialize(command.Data.Consumer);
 
-                IssuerData = JsonSerializer.Serialize(command.Data.Issuer),
-                ConsumerData = JsonSerializer.Serialize(command.Data.Consumer),
-
-                Status = Domain.Enums.InvoiceStatus.Pending,
-                CreatedAt = DateTime.UtcNow,
-            };
+            var invoice = Invoice.Create(
+                command.ClientId,
+                issuerCnpj,
+                issuerJson,
+                consumerJson,
+                command.Data.ServiceDescription,
+                command.Data.Amount,
+                command.Data.IssuedAt,
+                command.Data.ServiceTypeKey // Pass through service type key
+            );
 
             await repository.AddAsync(invoice, ct);
 
