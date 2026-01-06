@@ -1,4 +1,4 @@
-using System;
+using InvoiceMicroservice.Domain.Repositories;
 using InvoiceMicroservice.Infrastructure.Repositories;
 using InvoiceMicroservice.Infrastructure.Xml;
 
