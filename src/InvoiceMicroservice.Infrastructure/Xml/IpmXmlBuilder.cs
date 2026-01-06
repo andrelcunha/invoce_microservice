@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Entities;
+using InvoiceMicroservice.Domain.Repositories;
 
 namespace InvoiceMicroservice.Infrastructure.Xml;
 
@@ -14,6 +15,7 @@ public interface IIpmXmlBuilder
 public class IpmXmlBuilder : IIpmXmlBuilder
 {
     private readonly TaxConfig _taxConfig;
+    private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;
 
     private static readonly Dictionary<string, string> TomCodes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -23,15 +25,19 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         ["joacaba-sc"] = "8177"
     };
 
-    public IpmXmlBuilder(TaxConfig taxConfig)
+    public IpmXmlBuilder(TaxConfig taxConfig, IServiceTypeTaxMappingRepository serviceTaxRepo)
     {
         _taxConfig = taxConfig;
+        _serviceTaxRepo = serviceTaxRepo;
     }
 
     public string BuildInvoiceXml(Invoice invoice, bool isTestMode = true)
     {
         var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;
         var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
+
+        // Lookup service type codes - fallback to defaults if not found
+        var serviceCodes = GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae).GetAwaiter().GetResult();
 
         var root = new XElement("nfse");
         if (isTestMode)
@@ -53,10 +59,10 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         root.Add(BuildTomador(consumer));
 
         // <itens> - service items list
-        root.Add(BuildItems(invoice, issuer));
+        root.Add(BuildItems(invoice, issuer, serviceCodes));
 
         // <IBSCBS> - Top-level tax reform section (REQUIRED for compliance)
-        root.Add(BuildIbsCbsSection());
+        root.Add(BuildIbsCbsSection(serviceCodes));
 
         // <forma_pagamento> - payment method (optional but recommended)
         root.Add(new XElement("forma_pagamento",
@@ -65,6 +71,28 @@ public class IpmXmlBuilder : IIpmXmlBuilder
 
         var doc = new XDocument(new XDeclaration("1.0", "UTF-8", null), root);
         return doc.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private async Task<ServiceTypeTaxCodes> GetServiceCodesAsync(string? serviceTypeKey, string? cnaeCode)
+    {
+        // Try lookup by service type key
+        if (!string.IsNullOrEmpty(serviceTypeKey))
+        {
+            var mapping = await _serviceTaxRepo.GetByServiceTypeKeyAsync(serviceTypeKey);
+            if (mapping != null)
+                return new ServiceTypeTaxCodes(mapping);
+        }
+
+        // Fallback: try lookup by CNAE
+        if (!string.IsNullOrEmpty(cnaeCode))
+        {
+            var mapping = await _serviceTaxRepo.GetByCnaeCodeAsync(cnaeCode);
+            if (mapping != null)
+                return new ServiceTypeTaxCodes(mapping);
+        }
+
+        // Ultimate fallback: default codes
+        return ServiceTypeTaxCodes.Default();
     }
 
     private XElement BuildNfSection(Invoice invoice)
@@ -139,7 +167,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return section;
     }
 
-    private XElement BuildIbsCbsSection()
+    private XElement BuildIbsCbsSection(ServiceTypeTaxCodes codes)
     {
         // Top-level IBSCBS section - REQUIRED for tax reform compliance
         // This section is OUTSIDE <nf> and contains operational tax data
@@ -154,7 +182,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         // cIndOp: Operation indicator code (6 digits) - links to service list
         // 030102 = Generic professional services (default)
         // Should be configurable per service type - see IPM Anexo VII
-        ibscbs.Add(new XElement("cIndOp", "030102"));
+        ibscbs.Add(new XElement("cIndOp", codes.OperationIndicator));
         
         var valores = new XElement("valores");
         var trib = new XElement("trib");
@@ -163,12 +191,12 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         // CST: Tax Situation Code (3 digits)
         // 200 = Normal taxation (default)
         // Should be configurable per issuer tax regime
-        gIBSCBS.Add(new XElement("CST", "200"));
+        gIBSCBS.Add(new XElement("CST", codes.TaxSituationCode));
         
         // cClassTrib: Tax Classification Code (6 digits)
         // 200028 = Generic professional services classification
         // Must match Operation Indicator - validated by IPM (error 00368)
-        gIBSCBS.Add(new XElement("cClassTrib", "200028"));
+        gIBSCBS.Add(new XElement("cClassTrib", codes.TaxClassificationCode));
         
         trib.Add(gIBSCBS);
         valores.Add(trib);
@@ -177,7 +205,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return ibscbs;
     }
 
-    private XElement BuildItems(Invoice invoice, Issuer issuer)
+    private XElement BuildItems(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes)
     {
         var itens = new XElement("itens");
         var lista = new XElement("lista");
@@ -192,12 +220,12 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         lista.Add(new XElement("unidade_valor_unitario", FormatMonetary(invoice.Amount)));
         
         // Service classification codes
-        lista.Add(new XElement("codigo_item_lista_servico", "0024")); // Should be configurable
+        lista.Add(new XElement("codigo_item_lista_servico", codes.ServiceListCode));
         
         // NBS code - MANDATORY for tax reform (error 00366)
         // Brazilian Service Nomenclature - must match service type
         // Should be configurable per service - default to generic code
-        lista.Add(new XElement("codigo_nbs", "123456789"));
+        lista.Add(new XElement("codigo_nbs", codes.NbsCode));
         
         lista.Add(new XElement("descritivo", EscapeXmlContent(invoice.ServiceDescription)));
         
@@ -327,4 +355,45 @@ public class IpmXmlBuilder : IIpmXmlBuilder
     {
         return (rate * 100).ToString("F4", CultureInfo.InvariantCulture).Replace('.', ',');
     }
+}
+
+// Helper class to encapsulate service tax codes
+internal record ServiceTypeTaxCodes
+{
+    public string NbsCode { get; init; }
+    public string ServiceListCode { get; init; }
+    public string OperationIndicator { get; init; }
+    public string TaxSituationCode { get; init; }
+    public string TaxClassificationCode { get; init; }
+
+    public ServiceTypeTaxCodes(ServiceTypeTaxMapping mapping)
+    {
+        NbsCode = mapping.NbsCode;
+        ServiceListCode = mapping.ServiceListCode;
+        OperationIndicator = mapping.OperationIndicator;
+        TaxSituationCode = mapping.TaxSituationCode;
+        TaxClassificationCode = mapping.TaxClassificationCode;
+    }
+
+    private ServiceTypeTaxCodes(
+        string nbsCode,
+        string serviceListCode,
+        string operationIndicator,
+        string taxSituationCode,
+        string taxClassificationCode)
+    {
+        NbsCode = nbsCode;
+        ServiceListCode = serviceListCode;
+        OperationIndicator = operationIndicator;
+        TaxSituationCode = taxSituationCode;
+        TaxClassificationCode = taxClassificationCode;
+    }
+
+    public static ServiceTypeTaxCodes Default() => new(
+        "123456789",
+        "0024",
+        "030102",
+        "200",
+        "200028"
+    );
 }
