@@ -37,63 +37,144 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         if (isTestMode)
             root.Add(new XElement("nfse_teste", "1"));
 
+        // Unique identifier to prevent duplicate processing
         root.Add(new XElement("identificador", invoice.Id.ToString("N")));
         
-        // <nf> section
-        var nf = new XElement("nf");
-        nf.Add(new XElement("data_fato_gerador", DateTime.Today.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
-        nf.Add(new XElement("valor_total", FormatDecimal(invoice.Amount)));
-        nf.Add(new XElement("valor_desconto", "0,00"));
-        nf.Add(new XElement("valor_ir", "0,00"));
-        nf.Add(new XElement("valor_inss", "0,00"));
-        nf.Add(new XElement("valor_contribuicao_social", "0,00"));
-        nf.Add(new XElement("valor_rps", "0,00"));
-        nf.Add(new XElement("valor_pis", "0,00"));
-        nf.Add(new XElement("valor_cofins", "0,00"));
-        nf.Add(new XElement("observacao", ""));
+        // <nf> section - invoice values and tax info
+        root.Add(BuildNfSection(invoice));
 
-        nf.Add(BuildIbsCbsNfSection(invoice.Amount));
-
-        root.Add(nf);
-
-        // <prestador> 
+        // <prestador> - service provider (issuer)
         root.Add(new XElement("prestador",
-            new XElement("cpfcnpj", issuer.Cnpj),
+            new XElement("cpfcnpj", OnlyDigits(issuer.Cnpj)),
             new XElement("cidade", GetTomCode(issuer.Address.City, issuer.Address.Uf))
         ));
 
-        // <tomador>
+        // <tomador> - service taker (consumer)
         root.Add(BuildTomador(consumer));
 
-        // <itens>
+        // <itens> - service items list
         root.Add(BuildItems(invoice, issuer));
 
-        // <forma_pagamento>
+        // <IBSCBS> - Top-level tax reform section (REQUIRED for compliance)
+        root.Add(BuildIbsCbsSection());
+
+        // <forma_pagamento> - payment method (optional but recommended)
         root.Add(new XElement("forma_pagamento",
-            new XElement("tipo_pagamento", "1")
+            new XElement("tipo_pagamento", "1") // 1 = À vista (immediate payment)
         ));
 
-        var doc = new XDocument(root);
+        var doc = new XDocument(new XDeclaration("1.0", "UTF-8", null), root);
         return doc.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private XElement BuildNfSection(Invoice invoice)
+    {
+        var nf = new XElement("nf");
+        
+        // Basic invoice values - use period as decimal separator per spec examples
+        nf.Add(new XElement("data_fato_gerador", DateTime.Today.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
+        nf.Add(new XElement("valor_total", FormatMonetary(invoice.Amount)));
+        nf.Add(new XElement("valor_desconto", FormatMonetary(0)));
+        nf.Add(new XElement("valor_ir", FormatMonetary(0)));
+        nf.Add(new XElement("valor_inss", FormatMonetary(0)));
+        nf.Add(new XElement("valor_contribuicao_social", FormatMonetary(0)));
+        nf.Add(new XElement("valor_rps", FormatMonetary(0)));
+        
+        // PIS/COFINS section (required when applicable)
+        nf.Add(BuildPisCofinsSection(invoice.Amount));
+        
+        // Calculate PIS/COFINS values for display
+        var pisValue = invoice.Amount * _taxConfig.PAliquotaPis;
+        var cofinsValue = invoice.Amount * _taxConfig.PAliquotaCofins;
+        nf.Add(new XElement("valor_pis", FormatMonetary(pisValue)));
+        nf.Add(new XElement("valor_cofins", FormatMonetary(cofinsValue)));
+        
+        nf.Add(new XElement("observacao", EscapeXmlContent(invoice.ServiceDescription ?? "")));
+
+        // IBS/CBS rates inside <nf> (auto-calculated by IPM, but we send for validation)
+        nf.Add(BuildIbsCbsNfSection(invoice.Amount));
+
+        return nf;
+    }
+
+    private XElement BuildPisCofinsSection(decimal baseValue)
+    {
+        var pisCofins = new XElement("pis_cofins");
+        
+        // CST code - should be configurable per issuer
+        pisCofins.Add(new XElement("cst", "01"));
+        
+        // Retention type: 1=Retained, 2=Not Retained, 3=PIS Retained/COFINS Not, 4=PIS Not/COFINS Retained
+        pisCofins.Add(new XElement("tipo_retencao", "2")); // Default: not retained
+        
+        pisCofins.Add(new XElement("base_calculo", FormatMonetary(baseValue)));
+        
+        // Rates use comma as decimal separator per spec
+        pisCofins.Add(new XElement("aliquota_pis", FormatRate(_taxConfig.PAliquotaPis)));
+        pisCofins.Add(new XElement("aliquota_cofins", FormatRate(_taxConfig.PAliquotaCofins)));
+
+        return pisCofins;
     }
 
     private XElement BuildIbsCbsNfSection(decimal amount)
     {
-        var section = new XElement("ibs_cbs_nf");
+        // This section inside <nf> contains IBS/CBS rates - IPM auto-calculates but validates our input
+        var section = new XElement("IBSCBS");
         
-        section.Add(new XElement("valor_ibs_uf", FormatDecimal(amount * _taxConfig.PIbsUf)));
-        section.Add(new XElement("aliquota_ibs_uf", FormatDecimal(_taxConfig.PIbsUf, 4)));
-        section.Add(new XElement("valor_reducao_ibs_uf", FormatDecimal(amount * _taxConfig.PRedAliqUf)));
+        // IBS UF (state-level)
+        section.Add(new XElement("valor_ibs_uf", FormatMonetary(amount * _taxConfig.PIbsUf)));
+        section.Add(new XElement("aliquota_ibs_uf", FormatRate(_taxConfig.PIbsUf)));
+        section.Add(new XElement("valor_reducao_ibs_uf", FormatMonetary(amount * _taxConfig.PRedAliqUf)));
         
-        section.Add(new XElement("valor_ibs_mun", FormatDecimal(amount * _taxConfig.PIbsMun)));
-        section.Add(new XElement("aliquota_ibs_mun", FormatDecimal(_taxConfig.PIbsMun, 4)));
-        section.Add(new XElement("valor_reducao_ibs_mun", FormatDecimal(amount * _taxConfig.PRedAliqMun)));
+        // IBS MUN (municipal-level)
+        section.Add(new XElement("valor_ibs_mun", FormatMonetary(amount * _taxConfig.PIbsMun)));
+        section.Add(new XElement("aliquota_ibs_mun", FormatRate(_taxConfig.PIbsMun)));
+        section.Add(new XElement("valor_reducao_ibs_mun", FormatMonetary(amount * _taxConfig.PRedAliqMun)));
         
-        section.Add(new XElement("valor_cbs", FormatDecimal(amount * _taxConfig.PCbs)));
-        section.Add(new XElement("aliquota_cbs", FormatDecimal(_taxConfig.PCbs, 4)));
-        section.Add(new XElement("valor_reducao_cbs", FormatDecimal(amount * _taxConfig.PRedAliqCbs)));
+        // CBS (federal contribution)
+        section.Add(new XElement("valor_cbs", FormatMonetary(amount * _taxConfig.PCbs)));
+        section.Add(new XElement("aliquota_cbs", FormatRate(_taxConfig.PCbs)));
+        section.Add(new XElement("valor_reducao_cbs", FormatMonetary(amount * _taxConfig.PRedAliqCbs)));
 
         return section;
+    }
+
+    private XElement BuildIbsCbsSection()
+    {
+        // Top-level IBSCBS section - REQUIRED for tax reform compliance
+        // This section is OUTSIDE <nf> and contains operational tax data
+        var ibscbs = new XElement("IBSCBS");
+        
+        // finNFSe: 0=regular operation, 1=adjustment, 2=return
+        ibscbs.Add(new XElement("finNFSe", "0"));
+        
+        // indFinal: 0=not final consumer, 1=final consumer
+        ibscbs.Add(new XElement("indFinal", "1"));
+        
+        // cIndOp: Operation indicator code (6 digits) - links to service list
+        // 030102 = Generic professional services (default)
+        // Should be configurable per service type - see IPM Anexo VII
+        ibscbs.Add(new XElement("cIndOp", "030102"));
+        
+        var valores = new XElement("valores");
+        var trib = new XElement("trib");
+        var gIBSCBS = new XElement("gIBSCBS");
+        
+        // CST: Tax Situation Code (3 digits)
+        // 200 = Normal taxation (default)
+        // Should be configurable per issuer tax regime
+        gIBSCBS.Add(new XElement("CST", "200"));
+        
+        // cClassTrib: Tax Classification Code (6 digits)
+        // 200028 = Generic professional services classification
+        // Must match Operation Indicator - validated by IPM (error 00368)
+        gIBSCBS.Add(new XElement("cClassTrib", "200028"));
+        
+        trib.Add(gIBSCBS);
+        valores.Add(trib);
+        ibscbs.Add(valores);
+        
+        return ibscbs;
     }
 
     private XElement BuildItems(Invoice invoice, Issuer issuer)
@@ -101,18 +182,34 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         var itens = new XElement("itens");
         var lista = new XElement("lista");
 
+        // Service location and taxation
         lista.Add(new XElement("tributa_municipio_prestador", "S"));
         lista.Add(new XElement("codigo_local_prestacao_servico", GetTomCode(issuer.Address.City, issuer.Address.Uf)));
-        lista.Add(new XElement("unidade_codigo", "1"));
+        
+        // Unit information
+        lista.Add(new XElement("unidade_codigo", "1")); // 1 = unit
         lista.Add(new XElement("unidade_quantidade", "1"));
-        lista.Add(new XElement("unidade_valor_unitario", FormatDecimal(invoice.Amount)));
-        lista.Add(new XElement("codigo_item_lista_servico", "0024")); // Default service code
+        lista.Add(new XElement("unidade_valor_unitario", FormatMonetary(invoice.Amount)));
+        
+        // Service classification codes
+        lista.Add(new XElement("codigo_item_lista_servico", "0024")); // Should be configurable
+        
+        // NBS code - MANDATORY for tax reform (error 00366)
+        // Brazilian Service Nomenclature - must match service type
+        // Should be configurable per service - default to generic code
+        lista.Add(new XElement("codigo_nbs", "123456789"));
+        
         lista.Add(new XElement("descritivo", EscapeXmlContent(invoice.ServiceDescription)));
-        lista.Add(new XElement("aliquota_item_lista_servico", FormatDecimal(_taxConfig.PIbsUf, 2)));
-        lista.Add(new XElement("situacao_tributaria", "0"));
-        lista.Add(new XElement("valor_tributavel", FormatDecimal(invoice.Amount)));
-        lista.Add(new XElement("valor_deducao", "0,00"));
-        lista.Add(new XElement("valor_issrf", "0,00"));
+        
+        // Tax rates - use 4 decimal places for rates
+        lista.Add(new XElement("aliquota_item_lista_servico", FormatRate(_taxConfig.PIbsUf)));
+        
+        // situacao_tributaria: 4-digit code (changed from "0" to "0000")
+        lista.Add(new XElement("situacao_tributaria", "0000"));
+        
+        lista.Add(new XElement("valor_tributavel", FormatMonetary(invoice.Amount)));
+        lista.Add(new XElement("valor_deducao", FormatMonetary(0)));
+        lista.Add(new XElement("valor_issrf", FormatMonetary(0)));
 
         itens.Add(lista);
         return itens;
@@ -123,31 +220,40 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         var tomador = new XElement("tomador");
         
         tomador.Add(new XElement("endereco_informado", "1"));
+        
+        // Determine type: J=Legal entity (CNPJ), F=Natural person (CPF), E=Foreign
         tomador.Add(new XElement("tipo", DetermineTomadorType(consumer.CpfCnpj)));
         
         tomador.Add(new XElement("cpfcnpj", OnlyDigits(consumer.CpfCnpj)));
-        tomador.Add(new XElement("ie", ""));
+        tomador.Add(new XElement("ie", "")); // State registration - empty for most services
         tomador.Add(new XElement("nome_razao_social", EscapeXmlContent(consumer.Name)));
-        tomador.Add(new XElement("sobrenome_nome_fantasia", ""));
+        tomador.Add(new XElement("sobrenome_nome_fantasia", "")); // Trade name - usually empty
         
+        // Address information
         tomador.Add(new XElement("logradouro", EscapeXmlContent(consumer.Address.Street)));
         tomador.Add(new XElement("numero_residencia", consumer.Address.Number));
         tomador.Add(new XElement("complemento", EscapeXmlContent(consumer.Address.Complement ?? "")));
-        tomador.Add(new XElement("ponto_referencia", ""));
+        tomador.Add(new XElement("ponto_referencia", "")); // Reference point - optional
         tomador.Add(new XElement("bairro", EscapeXmlContent(consumer.Address.Neighborhood)));
         tomador.Add(new XElement("cidade", GetTomCode(consumer.Address.City, consumer.Address.Uf)));
         tomador.Add(new XElement("cep", OnlyDigits(consumer.Address.ZipCode)));
         
         tomador.Add(new XElement("email", EscapeXmlContent(consumer.Email ?? "")));
         
+        // Phone numbers - split DDD (area code) from number
         if (!string.IsNullOrEmpty(consumer.Phone))
         {
             var phoneDigits = OnlyDigits(consumer.Phone);
-            var ddd = phoneDigits.Length >= 2 ? phoneDigits.Substring(0, 2) : "";
-            var number = phoneDigits.Length > 2 ? phoneDigits.Substring(2) : "";
+            var ddd = phoneDigits.Length >= 2 ? phoneDigits[..2] : "";
+            var number = phoneDigits.Length > 2 ? phoneDigits[2..] : "";
             
             tomador.Add(new XElement("ddd_fone_comercial", ddd));
             tomador.Add(new XElement("fone_comercial", number));
+        }
+        else
+        {
+            tomador.Add(new XElement("ddd_fone_comercial", ""));
+            tomador.Add(new XElement("fone_comercial", ""));
         }
 
         return tomador;
@@ -162,38 +268,63 @@ public class IpmXmlBuilder : IIpmXmlBuilder
             return code;
         }
 
-        // Default fallback - in production, this should be looked up from a database
-        return "8083";
+        // Default fallback - in production, this should be looked up from database/API
+        // TOM codes are required - missing codes will cause validation errors
+        return "8083"; // Concordia-SC as default
     }
 
     private static string DetermineTomadorType(string cpfCnpj)
     {
         var digits = OnlyDigits(cpfCnpj);
-        return digits.Length == 11 ? "F" : "J"; // F = Físico (CPF), J = Jurídico (CNPJ)
+        
+        // No document = foreign entity
+        if (digits.Length == 0) return "E";
+        
+        // CPF (11 digits) = natural person, CNPJ (14 digits) = legal entity
+        return digits.Length == 11 ? "F" : "J";
     }
 
+    /// <summary>
+    /// Escapes XML special characters per IPM specification:
+    /// &lt; &gt; &apos; &quot; &amp; and removes forward slashes
+    /// </summary>
     private static string EscapeXmlContent(string content)
     {
         if (string.IsNullOrEmpty(content))
             return "";
 
         return content
-            .Replace("&", "&amp;")   // Must be first
+            .Replace("&", "&amp;")   // Must be first to avoid double escaping
             .Replace("<", "&lt;")
             .Replace(">", "&gt;")
             .Replace("'", "&apos;")
             .Replace("\"", "&quot;")
-            .Replace("/", "");       // Remove forward slashes
+            .Replace("/", "");       // Forward slashes not allowed per spec
     }
 
     private static string OnlyDigits(string input)
     {
-        return new(input.Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(input))
+            return "";
+        
+        return new string(input.Where(char.IsDigit).ToArray());
     }
 
-    private static string FormatDecimal(decimal amount, int? fixedDigits = null)
+    /// <summary>
+    /// Formats monetary values using period as decimal separator (e.g., 1500.00)
+    /// Per IPM spec examples: valor_total, base_calculo use period
+    /// </summary>
+    private static string FormatMonetary(decimal amount)
     {
-        var format = fixedDigits.HasValue ? $"F{fixedDigits.Value}" : "F2";
-        return amount.ToString(format, CultureInfo.InvariantCulture).Replace('.', ',');
+        return amount.ToString("F2", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Formats percentage rates using comma as decimal separator with 4 decimals (e.g., 5,0000)
+    /// Per IPM spec examples: aliquota_* fields use comma
+    /// </summary>
+    private static string FormatRate(decimal rate)
+    {
+        return (rate * 100).ToString("F4", CultureInfo.InvariantCulture).Replace('.', ',');
     }
 }

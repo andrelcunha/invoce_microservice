@@ -17,6 +17,8 @@ public class Program
         // Add services to the container.
         builder.Services.AddEFConfiguration(builder.Configuration);
 
+        builder.Services.AddTaxConfiguration(builder.Configuration);
+
         builder.Services.AddDependencyInjection();
 
         builder.Services.AddAuthorization();
