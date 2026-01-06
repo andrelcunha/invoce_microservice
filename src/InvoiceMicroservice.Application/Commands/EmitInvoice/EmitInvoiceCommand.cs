@@ -1,21 +1,24 @@
-
-
 namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
 
-public class EmitInvoiceCommand
+public record EmitInvoiceCommand
 {
-    public string ClientId { get; set; } = null!;
-
-   public InvoiceData Data { get; set; } = null!;
+    public required string ClientId { get; init; }
+    public required EmitInvoiceData Data { get; init; }
 }
 
-public class InvoiceData
+public record EmitInvoiceData
 {
-    public Issuer Issuer { get; set; } = null!;
-    public Consumer Consumer { get; set; } = null!;
-    public string ServiceDescription { get; set; } = null!;
-    public decimal Amount { get; set; }
-    public DateTime IssuedAt { get; set; }
+    public required Issuer Issuer { get; init; }
+    public required Consumer Consumer { get; init; }
+    public required string ServiceDescription { get; init; }
+    public required decimal Amount { get; init; }
+    public required DateTime IssuedAt { get; init; }
+    
+    /// <summary>
+    /// Optional service type key to lookup tax codes (e.g., "vehicle-wash-45200-05").
+    /// If omitted, will attempt to infer from Issuer.Cnae or use default codes.
+    /// </summary>
+    public string? ServiceTypeKey { get; init; }
 }
 
 public class Issuer
