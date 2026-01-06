@@ -16,11 +16,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../InvoiceMicroservice.Application/InvoiceMicroservice.Application.csproj" />
     <ProjectReference Include="../InvoiceMicroservice.Domain/InvoiceMicroservice.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Repositories/" />
+    <Folder Include="Xml/" />
   </ItemGroup>
 
 </Project>
