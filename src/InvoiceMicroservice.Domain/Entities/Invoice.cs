@@ -31,4 +31,33 @@ public class Invoice
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     public DateTime? IssuedAt { get; set; }
+
+    public string? ServiceTypeKey { get; private set; }
+
+    public static Invoice Create(
+        string clientId,
+        Cnpj issuerCnpj,
+        string issuerData,
+        string consumerData,
+        string serviceDescription,
+        decimal amount,
+        DateTime issuedAt,
+        string? serviceTypeKey = null)
+    {
+        return new Invoice
+        {
+            Id = Guid.NewGuid(),
+            ClientId = clientId,
+            IssuerCnpj = issuerCnpj,
+            IssuerData = issuerData,
+            ConsumerData = consumerData,
+            ServiceDescription = serviceDescription,
+            Amount = amount,
+            IssuedAt = issuedAt,
+            ServiceTypeKey = serviceTypeKey,
+            Status = InvoiceStatus.Pending,
+            RetryCount = 0,
+            CreatedAt = DateTime.UtcNow
+        };
+    }
 }
