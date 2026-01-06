@@ -33,7 +33,7 @@ InvoiceMicroservice.sln
 ## How to Run
 
 ### Prerequisites
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - PostgreSQL (running instance – the service uses an existing shared database)
 - (Optional) RabbitMQ if enabling outgoing events later
 
