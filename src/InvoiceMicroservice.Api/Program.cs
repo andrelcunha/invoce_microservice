@@ -2,7 +2,6 @@ using System.Text.Json;
 using FluentValidation;
 using InvoiceMicroservice.Api.Extensions;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
-using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 
 namespace InvoiceMicroservice.Api;
@@ -15,24 +14,18 @@ public class Program
 
         // Add services to the container.
         builder.Services.AddEFConfiguration(builder.Configuration);
-
         builder.Services.AddTaxConfiguration(builder.Configuration);
-
+        builder.Services.AddIpmClientConfiguration(builder.Configuration);
         builder.Services.AddDependencyInjection();
-
         builder.Services.AddAuthorization();
-
         builder.Services.AddOpenApiConfiguration();
-
         builder.Services.AddFluentValidationConfiguration();
 
         var app = builder.Build();
 
-
         // Configure the HTTP request pipeline.
         app.UseOpenApiConfiguration();
         app.UseHttpsRedirection();
-
         app.UseAuthorization();
 
         app.MapGet("/", () => Results.Ok("Invoice Microservice - Alive"));
@@ -40,8 +33,7 @@ public class Program
         app.MapPost("/api/invoices", async (
             EmitInvoiceCommand command,
             IValidator<EmitInvoiceCommand> validator,
-            IInvoiceRepository repository,
-            HttpContext context,
+            EmitInvoiceCommandHandler handler, // Inject the handler!
             CancellationToken ct) =>
         {
             var validationResult = await validator.ValidateAsync(command, ct);
@@ -50,26 +42,11 @@ public class Program
                 return Results.ValidationProblem(validationResult.ToDictionary());
             }
 
-            var issuerCnpj = new Domain.ValueObjects.Cnpj(command.Data.Issuer.Cnpj);
-            var issuerJson = JsonSerializer.Serialize(command.Data.Issuer);
-            var consumerJson = JsonSerializer.Serialize(command.Data.Consumer);
+            // Delegate to the handler - it handles persistence, XML generation, and IPM submission
+            var invoiceId = await handler.HandleAsync(command, ct);
 
-            var invoice = Invoice.Create(
-                command.ClientId,
-                issuerCnpj,
-                issuerJson,
-                consumerJson,
-                command.Data.ServiceDescription,
-                command.Data.Amount,
-                command.Data.IssuedAt,
-                command.Data.ServiceTypeKey // Pass through service type key
-            );
-
-            await repository.AddAsync(invoice, ct);
-
-            var location = $"/api/invoices/{invoice.Id}";
-
-            return Results.Accepted(location, new { invoice.Id, invoice.Status });
+            var location = $"/api/invoices/{invoiceId}";
+            return Results.Accepted(location, new { Id = invoiceId, Status = "Pending" });
         })
         .WithName("CreateInvoice")
         .WithOpenApi();
@@ -90,20 +67,15 @@ public class Program
                 invoice.Id,
                 invoice.Status,
                 invoice.ExternalInvoiceId,
+                // invoice.ExternalProtocol,
+                // invoice.VerificationCode,
                 invoice.XmlPayload,
+                // invoice.ResponsePayload,
+                // invoice.ErrorMessage,
+                invoice.RetryCount,
                 invoice.CreatedAt,
                 invoice.IssuedAt,
-                // invoice.ClientId,
-                // invoice.IssuerCnpj,
-                // IssuerData = JsonSerializer.Deserialize<object>(invoice.IssuerData),
-                // ConsumerData = JsonSerializer.Deserialize<object>(invoice.ConsumerData),
-                // invoice.Amount,
-                // invoice.ServiceDescription,
-                // invoice.XMLResponse,
-                // invoice.ExternalResponse,
-                // invoice.ErrorDetails,
-                // invoice.RetryCount,
-                // invoice.UpdatedAt,
+                invoice.UpdatedAt
             });
         })
         .WithName("GetInvoiceStatus")
