@@ -22,7 +22,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
             RuleFor(x => x.Data).SetValidator(new InvoiceDataValidator());
     }
 
-    internal class InvoiceDataValidator : AbstractValidator<InvoiceData>
+    internal class InvoiceDataValidator : AbstractValidator<EmitInvoiceData>
     {
         public InvoiceDataValidator()
         {
