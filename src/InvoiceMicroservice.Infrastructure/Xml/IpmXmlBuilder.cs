@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Entities;
-using InvoiceMicroservice.Domain.Repositories;
+using InvoiceMicroservice.Domain.Interfaces;
 
 namespace InvoiceMicroservice.Infrastructure.Xml;
 

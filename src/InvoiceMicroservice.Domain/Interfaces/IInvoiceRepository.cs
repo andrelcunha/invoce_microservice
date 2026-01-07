@@ -1,6 +1,6 @@
 using InvoiceMicroservice.Domain.Entities;
 
-namespace InvoiceMicroservice.Domain.Repositories;
+namespace InvoiceMicroservice.Domain.Interfaces;
 
 public interface IInvoiceRepository
 {

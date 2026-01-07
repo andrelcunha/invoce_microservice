@@ -3,7 +3,7 @@ using FluentValidation;
 using InvoiceMicroservice.Api.Extensions;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Entities;
-using InvoiceMicroservice.Domain.Repositories;
+using InvoiceMicroservice.Domain.Interfaces;
 
 namespace InvoiceMicroservice.Api;
 

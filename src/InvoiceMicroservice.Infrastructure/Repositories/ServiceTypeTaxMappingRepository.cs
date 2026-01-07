@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using InvoiceMicroservice.Domain.Entities;
-using InvoiceMicroservice.Domain.Repositories;
+using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Infrastructure.Data;
 
 namespace InvoiceMicroservice.Infrastructure.Repositories;

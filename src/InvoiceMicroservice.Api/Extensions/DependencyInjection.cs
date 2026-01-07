@@ -1,4 +1,4 @@
-using InvoiceMicroservice.Domain.Repositories;
+using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Infrastructure.Repositories;
 using InvoiceMicroservice.Infrastructure.Xml;
 

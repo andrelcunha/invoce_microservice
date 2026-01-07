@@ -2,7 +2,7 @@
 using FluentAssertions;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Entities;
-using InvoiceMicroservice.Domain.Repositories;
+using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Domain.ValueObjects;
 using InvoiceMicroservice.Infrastructure.Xml;
 using Moq;
