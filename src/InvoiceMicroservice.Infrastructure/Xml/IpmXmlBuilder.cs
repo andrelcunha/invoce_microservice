@@ -9,35 +9,32 @@ namespace InvoiceMicroservice.Infrastructure.Xml;
 
 public interface IIpmXmlBuilder
 {
-    string BuildInvoiceXml(Invoice invoice, bool isTestMode = true);
+    Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default);
 }
 
 public class IpmXmlBuilder : IIpmXmlBuilder
 {
     private readonly TaxConfig _taxConfig;
     private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;
+    private readonly IMunicipalityRepository _municipalityRepo;
 
-    private static readonly Dictionary<string, string> TomCodes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["concordia-sc"] = "8083",
-        ["florianopolis-sc"] = "8105",
-        ["chapeco-sc"] = "8081",
-        ["joacaba-sc"] = "8177"
-    };
-
-    public IpmXmlBuilder(TaxConfig taxConfig, IServiceTypeTaxMappingRepository serviceTaxRepo)
+    public IpmXmlBuilder(
+        TaxConfig taxConfig, 
+        IServiceTypeTaxMappingRepository serviceTaxRepo,
+        IMunicipalityRepository municipalityRepo)
     {
         _taxConfig = taxConfig;
         _serviceTaxRepo = serviceTaxRepo;
+        _municipalityRepo = municipalityRepo;
     }
 
-    public string BuildInvoiceXml(Invoice invoice, bool isTestMode = true)
+    public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
         var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;
         var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
 
         // Lookup service type codes - fallback to defaults if not found
-        var serviceCodes = GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae).GetAwaiter().GetResult();
+        var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
         var root = new XElement("nfse");
         if (isTestMode)
@@ -50,16 +47,17 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         root.Add(BuildNfSection(invoice));
 
         // <prestador> - service provider (issuer)
+        var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
         root.Add(new XElement("prestador",
             new XElement("cpfcnpj", OnlyDigits(issuer.Cnpj)),
-            new XElement("cidade", GetTomCode(issuer.Address.City, issuer.Address.Uf))
+            new XElement("cidade", issuerTomCode)
         ));
 
         // <tomador> - service taker (consumer)
-        root.Add(BuildTomador(consumer));
+        root.Add(await BuildTomadorAsync(consumer, cancellationToken));
 
         // <itens> - service items list
-        root.Add(BuildItems(invoice, issuer, serviceCodes));
+        root.Add(await BuildItemsAsync(invoice, issuer, serviceCodes, cancellationToken));
 
         // <IBSCBS> - Top-level tax reform section (REQUIRED for compliance)
         root.Add(BuildIbsCbsSection(serviceCodes));
@@ -73,12 +71,12 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return doc.ToString(SaveOptions.DisableFormatting);
     }
 
-    private async Task<ServiceTypeTaxCodes> GetServiceCodesAsync(string? serviceTypeKey, string? cnaeCode)
+    private async Task<ServiceTypeTaxCodes> GetServiceCodesAsync(string? serviceTypeKey, string? cnaeCode, CancellationToken cancellationToken)
     {
         // Try lookup by service type key
         if (!string.IsNullOrEmpty(serviceTypeKey))
         {
-            var mapping = await _serviceTaxRepo.GetByServiceTypeKeyAsync(serviceTypeKey);
+            var mapping = await _serviceTaxRepo.GetByServiceTypeKeyAsync(serviceTypeKey, cancellationToken);
             if (mapping != null)
                 return new ServiceTypeTaxCodes(mapping);
         }
@@ -86,7 +84,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         // Fallback: try lookup by CNAE
         if (!string.IsNullOrEmpty(cnaeCode))
         {
-            var mapping = await _serviceTaxRepo.GetByCnaeCodeAsync(cnaeCode);
+            var mapping = await _serviceTaxRepo.GetByCnaeCodeAsync(cnaeCode, cancellationToken);
             if (mapping != null)
                 return new ServiceTypeTaxCodes(mapping);
         }
@@ -180,8 +178,6 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         ibscbs.Add(new XElement("indFinal", "1"));
         
         // cIndOp: Operation indicator code (6 digits) - links to service list
-        // 030102 = Generic professional services (default)
-        // Should be configurable per service type - see IPM Anexo VII
         ibscbs.Add(new XElement("cIndOp", codes.OperationIndicator));
         
         var valores = new XElement("valores");
@@ -189,13 +185,9 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         var gIBSCBS = new XElement("gIBSCBS");
         
         // CST: Tax Situation Code (3 digits)
-        // 200 = Normal taxation (default)
-        // Should be configurable per issuer tax regime
         gIBSCBS.Add(new XElement("CST", codes.TaxSituationCode));
         
         // cClassTrib: Tax Classification Code (6 digits)
-        // 200028 = Generic professional services classification
-        // Must match Operation Indicator - validated by IPM (error 00368)
         gIBSCBS.Add(new XElement("cClassTrib", codes.TaxClassificationCode));
         
         trib.Add(gIBSCBS);
@@ -205,14 +197,16 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return ibscbs;
     }
 
-    private XElement BuildItems(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes)
+    private async Task<XElement> BuildItemsAsync(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
     {
         var itens = new XElement("itens");
         var lista = new XElement("lista");
 
         // Service location and taxation
         lista.Add(new XElement("tributa_municipio_prestador", "S"));
-        lista.Add(new XElement("codigo_local_prestacao_servico", GetTomCode(issuer.Address.City, issuer.Address.Uf)));
+        
+        var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
+        lista.Add(new XElement("codigo_local_prestacao_servico", issuerTomCode));
         
         // Unit information
         lista.Add(new XElement("unidade_codigo", "1")); // 1 = unit
@@ -223,8 +217,6 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         lista.Add(new XElement("codigo_item_lista_servico", codes.ServiceListCode));
         
         // NBS code - MANDATORY for tax reform (error 00366)
-        // Brazilian Service Nomenclature - must match service type
-        // Should be configurable per service - default to generic code
         lista.Add(new XElement("codigo_nbs", codes.NbsCode));
         
         lista.Add(new XElement("descritivo", EscapeXmlContent(invoice.ServiceDescription)));
@@ -232,7 +224,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         // Tax rates - use 4 decimal places for rates
         lista.Add(new XElement("aliquota_item_lista_servico", FormatRate(_taxConfig.PIbsUf)));
         
-        // situacao_tributaria: 4-digit code (changed from "0" to "0000")
+        // situacao_tributaria: 4-digit code
         lista.Add(new XElement("situacao_tributaria", "0000"));
         
         lista.Add(new XElement("valor_tributavel", FormatMonetary(invoice.Amount)));
@@ -243,7 +235,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return itens;
     }
 
-    private XElement BuildTomador(Consumer consumer)
+    private async Task<XElement> BuildTomadorAsync(Consumer consumer, CancellationToken cancellationToken)
     {
         var tomador = new XElement("tomador");
         
@@ -263,7 +255,9 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         tomador.Add(new XElement("complemento", EscapeXmlContent(consumer.Address.Complement ?? "")));
         tomador.Add(new XElement("ponto_referencia", "")); // Reference point - optional
         tomador.Add(new XElement("bairro", EscapeXmlContent(consumer.Address.Neighborhood)));
-        tomador.Add(new XElement("cidade", GetTomCode(consumer.Address.City, consumer.Address.Uf)));
+        
+        var consumerTomCode = await GetTomCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken);
+        tomador.Add(new XElement("cidade", consumerTomCode));
         tomador.Add(new XElement("cep", OnlyDigits(consumer.Address.ZipCode)));
         
         tomador.Add(new XElement("email", EscapeXmlContent(consumer.Email ?? "")));
@@ -287,18 +281,18 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return tomador;
     }
 
-    private string GetTomCode(string city, string uf)
+    private async Task<string> GetTomCodeAsync(string city, string uf, CancellationToken cancellationToken)
     {
-        var key = $"{city.ToLowerInvariant().Replace(" ", "-")}-{uf.ToLowerInvariant()}";
+        var municipality = await _municipalityRepo.GetByCityAndUfAsync(city, uf, cancellationToken);
         
-        if (TomCodes.TryGetValue(key, out var code))
+        if (municipality != null)
         {
-            return code;
+            return municipality.TomCode;
         }
 
-        // Default fallback - in production, this should be looked up from database/API
-        // TOM codes are required - missing codes will cause validation errors
-        return "8083"; // Concordia-SC as default
+        // Fallback to Concordia-SC (your HQ city) if municipality not found
+        // In production, you might want to throw an exception or log a warning
+        return "8083";
     }
 
     private static string DetermineTomadorType(string cpfCnpj)
