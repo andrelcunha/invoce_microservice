@@ -17,7 +17,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../InvoiceMicroservice.Application/InvoiceMicroservice.Application.csproj" />
     <ProjectReference Include="../InvoiceMicroservice.Domain/InvoiceMicroservice.Domain.csproj" />
   </ItemGroup>
 

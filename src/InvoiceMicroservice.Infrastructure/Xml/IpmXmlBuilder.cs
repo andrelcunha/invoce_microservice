@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Xml.Linq;
-using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 
