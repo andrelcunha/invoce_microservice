@@ -101,7 +101,7 @@ namespace InvoiceMicroservice.Infrastructure.Migrations
 
                     b.HasIndex("Status", "CreatedAt");
 
-                    b.ToTable("Invoices");
+                    b.ToTable("Invoices", (string)null);
                 });
 
             modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.ServiceTypeTaxMapping", b =>

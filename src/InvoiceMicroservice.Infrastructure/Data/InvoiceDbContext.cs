@@ -10,6 +10,7 @@ public class InvoiceDbContext : DbContext
 
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<ServiceTypeTaxMapping> ServiceTypeTaxMappings => Set<ServiceTypeTaxMapping>();
+    public DbSet<Municipality> Municipalities => Set<Municipality>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -125,6 +126,51 @@ public class InvoiceDbContext : DbContext
             entity.HasIndex(e => e.ServiceTypeKey).IsUnique();
             entity.HasIndex(e => e.CnaeCode);
             entity.HasIndex(e => new { e.IsActive, e.ServiceTypeKey });
+        });
+
+        // Municipality configuration
+        modelBuilder.Entity<Municipality>(entity =>
+        {
+            entity.ToTable("municipalities");
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.Id)
+                .HasColumnName("id")
+                .ValueGeneratedOnAdd();
+            
+            entity.Property(e => e.IbgeCode)
+                .HasColumnName("ibge_code")
+                .HasMaxLength(10)
+                .IsRequired();
+            
+            entity.Property(e => e.Name)
+                .HasColumnName("name")
+                .HasMaxLength(200)
+                .IsRequired();
+            
+            entity.Property(e => e.Uf)
+                .HasColumnName("uf")
+                .HasMaxLength(2)
+                .IsRequired();
+            
+            entity.Property(e => e.TomCode)
+                .HasColumnName("tom_code")
+                .HasMaxLength(10)
+                .IsRequired();
+            
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasMaxLength(20);
+            
+            entity.Property(e => e.ExtinguishedAt)
+                .HasColumnName("extinguished_at")
+                .HasMaxLength(20);
+            
+            // Indexes for common lookups
+            entity.HasIndex(e => e.IbgeCode).IsUnique();
+            entity.HasIndex(e => e.TomCode);
+            entity.HasIndex(e => new { e.Name, e.Uf });
+            entity.HasIndex(e => e.Uf);
         });
     }
 }
