@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using InvoiceMicroservice.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace InvoiceMicroservice.Infrastructure.Services;

@@ -1,3 +1,4 @@
+using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Infrastructure.Services;
 
 namespace InvoiceMicroservice.Api.Extensions;
