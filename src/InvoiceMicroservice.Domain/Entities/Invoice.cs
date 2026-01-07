@@ -61,13 +61,21 @@ public class Invoice
         };
     }
 
-    public void MarkAsEmitted(string v1, string v2, string v3, string v4)
+    public void MarkAsEmitted(string invoiceNumber, string protocol, string verificationCode, string responseXml)
     {
-        throw new NotImplementedException();
+        Status = InvoiceStatus.Emitted;
+        ExternalInvoiceId = invoiceNumber;
+        // ExternalProtocol = protocol;
+        // VerificationCode = verificationCode;
+        // ResponsePayload = responseXml;
+        UpdatedAt = DateTime.UtcNow;
     }
 
-    public void MarkAsFailed(string v)
+    public void MarkAsFailed(string errorMessage)
     {
-        throw new NotImplementedException();
+        Status = InvoiceStatus.Failed;
+        // ErrorMessage = errorMessage;
+        RetryCount++;
+        UpdatedAt = DateTime.UtcNow;
     }
 }
