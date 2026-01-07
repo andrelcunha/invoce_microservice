@@ -1,7 +1,6 @@
-using System;
 using System.Data;
 using FluentValidation;
-using System.Text.RegularExpressions;   
+using InvoiceMicroservice.Domain.Entities;
 
 namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
 
