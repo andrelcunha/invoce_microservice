@@ -60,4 +60,14 @@ public class Invoice
             CreatedAt = DateTime.UtcNow
         };
     }
+
+    public void MarkAsEmitted(string v1, string v2, string v3, string v4)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void MarkAsFailed(string v)
+    {
+        throw new NotImplementedException();
+    }
 }
