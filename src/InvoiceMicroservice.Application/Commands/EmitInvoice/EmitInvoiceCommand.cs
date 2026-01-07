@@ -10,6 +10,7 @@ public record EmitInvoiceCommand
 {
     public required string ClientId { get; init; }
     public required EmitInvoiceData Data { get; init; }
+    public bool IsTestMode { get; init; } = true; // Default to test mode for safety
 }
 
 public record EmitInvoiceData
@@ -18,17 +19,9 @@ public record EmitInvoiceData
     public required Consumer Consumer { get; init; }
     public required string ServiceDescription { get; init; }
     public required decimal Amount { get; init; }
-    public required DateTime IssuedAt { get; init; }
-    
-    /// <summary>
-    /// Optional service type key to lookup tax codes (e.g., "vehicle-wash-45200-05").
-    /// If omitted, will attempt to infer from Issuer.Cnae or use default codes.
-    /// </summary>
+    public DateTime IssuedAt { get; init; }
     public string? ServiceTypeKey { get; init; }
 }
-
-
-
 
 public class EmitInvoiceCommandHandler
 {
@@ -66,11 +59,20 @@ public class EmitInvoiceCommandHandler
 
         await _repository.AddAsync(invoice, cancellationToken);
 
-        // Generate XML (using test mode for now)
-        var xml = await _xmlBuilder.BuildInvoiceXmlAsync(invoice, isTestMode: true, cancellationToken);
+        // Generate XML
+        var xml = await _xmlBuilder.BuildInvoiceXmlAsync(
+            invoice, 
+            isTestMode: request.IsTestMode, 
+            cancellationToken);
         
-        // Submit to IPM (currently using FileIpmClient)
-        var result = await _ipmClient.SubmitInvoiceAsync(xml, isTestMode: true, cancellationToken);
+        // Store generated XML
+        invoice.XmlPayload = xml;
+        
+        // Submit to IPM (File or API depending on configuration)
+        var result = await _ipmClient.SubmitInvoiceAsync(
+            xml, 
+            isTestMode: request.IsTestMode, 
+            cancellationToken);
         
         // Update invoice with submission result
         if (result.Success)
