@@ -31,11 +31,11 @@ namespace InvoiceMicroservice.Infrastructure.Migrations
                         "vehicle-wash-45200-05",
                         "45.20-0-05",
                         "Serviços de lavagem, lubrificação e polimento de veículos automotivos",
-                        "149.01.00",
+                        "1.1803.29.00",
                         "14.01",
-                        "140101",
+                        "050101",
                         "200",
-                        "140001",
+                        "000001",
                         true,
                         new DateTime(2026, 1, 6, 0, 0, 0, DateTimeKind.Utc)
                     }

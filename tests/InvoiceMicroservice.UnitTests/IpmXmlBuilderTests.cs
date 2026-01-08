@@ -102,11 +102,11 @@ public class IpmXmlBuilderTests
         var nf = doc.Root?.Element("nf");
         nf.Should().NotBeNull();
         
-        // Check mandatory fields
+        // Check mandatory fields - now use comma separator per IPM XSD
         nf!.Element("data_fato_gerador").Should().NotBeNull();
         nf.Element("valor_total").Should().NotBeNull();
-        nf.Element("valor_total")!.Value.Should().Be("1500.00");
-        nf.Element("valor_desconto")!.Value.Should().Be("0.00");
+        nf.Element("valor_total")!.Value.Should().Be("1500,00");
+        nf.Element("valor_desconto")!.Value.Should().Be("0,00");
     }
 
     [Fact]
@@ -126,9 +126,9 @@ public class IpmXmlBuilderTests
         
         pisCofins!.Element("cst")!.Value.Should().Be("01");
         pisCofins.Element("tipo_retencao")!.Value.Should().Be("2");
-        pisCofins.Element("base_calculo")!.Value.Should().Be("1500.00");
-        pisCofins.Element("aliquota_pis")!.Value.Should().Be("0,6500");
-        pisCofins.Element("aliquota_cofins")!.Value.Should().Be("3,0000");
+        pisCofins.Element("base_calculo")!.Value.Should().Be("1500,00");
+        pisCofins.Element("aliquota_pis")!.Value.Should().Be("0,65"); // 2 decimals max
+        pisCofins.Element("aliquota_cofins")!.Value.Should().Be("3,00"); // 2 decimals max
     }
 
     [Fact]
@@ -171,17 +171,57 @@ public class IpmXmlBuilderTests
         var ibscbsNf = doc.Root?.Element("nf")?.Element("IBSCBS");
         ibscbsNf.Should().NotBeNull();
         
-        // IBS UF
-        ibscbsNf!.Element("valor_ibs_uf")!.Value.Should().Be("37.50");
-        ibscbsNf.Element("aliquota_ibs_uf")!.Value.Should().Be("2,5000");
+        // Check pRedutor
+        ibscbsNf!.Element("pRedutor")!.Value.Should().Be("0,00");
         
-        // IBS MUN
-        ibscbsNf.Element("valor_ibs_mun")!.Value.Should().Be("37.50");
-        ibscbsNf.Element("aliquota_ibs_mun")!.Value.Should().Be("2,5000");
+        // Check valores group structure per NTE-122/2025
+        var valores = ibscbsNf.Element("valores");
+        valores.Should().NotBeNull();
         
-        // CBS
-        ibscbsNf.Element("valor_cbs")!.Value.Should().Be("13.50");
-        ibscbsNf.Element("aliquota_cbs")!.Value.Should().Be("0,9000");
+        // vBC - calculation base
+        valores!.Element("vBC")!.Value.Should().Be("1500,00");
+        
+        // UF group - state IBS
+        var uf = valores.Element("uf");
+        uf.Should().NotBeNull();
+        uf!.Element("pIBSUF")!.Value.Should().Be("2,50"); // 2.5%
+        uf.Element("pAliqEfetUF").Should().NotBeNull(); // Effective rate
+        
+        // MUN group - municipal IBS
+        var mun = valores.Element("mun");
+        mun.Should().NotBeNull();
+        mun!.Element("pIBSMun")!.Value.Should().Be("2,50"); // 2.5%
+        mun.Element("pAliqEfetMun").Should().NotBeNull();
+        
+        // FED group - CBS
+        var fed = valores.Element("fed");
+        fed.Should().NotBeNull();
+        fed!.Element("pCBS")!.Value.Should().Be("0,90"); // 0.9%
+        fed.Element("pAliqEfetCBS").Should().NotBeNull();
+        
+        // Check totCIBS group
+        var totCIBS = ibscbsNf.Element("totCIBS");
+        totCIBS.Should().NotBeNull();
+        totCIBS!.Element("vTotNF")!.Value.Should().Be("1500,00");
+        
+        // gTribRegular - regular taxation
+        var gTribRegular = totCIBS.Element("gTribRegular");
+        gTribRegular.Should().NotBeNull();
+        gTribRegular!.Element("vTribRegIBSUF").Should().NotBeNull();
+        gTribRegular.Element("vTribRegIBSMun").Should().NotBeNull();
+        gTribRegular.Element("vTribRegCBS").Should().NotBeNull();
+        
+        // gIBS - IBS totals
+        var gIBS = totCIBS.Element("gIBS");
+        gIBS.Should().NotBeNull();
+        gIBS!.Element("vIBSTot").Should().NotBeNull();
+        gIBS.Element("gIBSUFTot")?.Element("vIBSUF").Should().NotBeNull();
+        gIBS.Element("gIBSMunTot")?.Element("vIBSMun").Should().NotBeNull();
+        
+        // gCBS - CBS totals
+        var gCBS = totCIBS.Element("gCBS");
+        gCBS.Should().NotBeNull();
+        gCBS!.Element("vCBS").Should().NotBeNull();
     }
 
     [Fact]
@@ -198,7 +238,7 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var nbsCode = doc.Root?.Element("itens")?.Element("lista")?.Element("codigo_nbs");
         nbsCode.Should().NotBeNull("NBS code is mandatory per IPM spec (error 00366)");
-        nbsCode!.Value.Should().Be("149.01.00");
+        nbsCode!.Value.Should().Be("118032900"); // "1.1803.29.00" with dots stripped - must be integer
     }
 
     [Fact]
@@ -279,7 +319,7 @@ public class IpmXmlBuilderTests
     }
 
     [Fact]
-    public async Task BuildInvoiceXmlAsync_ShouldFormatMonetaryValuesWithPeriod()
+    public async Task BuildInvoiceXmlAsync_ShouldFormatMonetaryValuesWithComma()
     {
         // Arrange
         var invoice = CreateSampleInvoice();
@@ -291,7 +331,7 @@ public class IpmXmlBuilderTests
         // Assert
         var doc = XDocument.Parse(xml);
         var valorTotal = doc.Root?.Element("nf")?.Element("valor_total");
-        valorTotal!.Value.Should().MatchRegex(@"^\d+\.\d{2}$", "monetary values use period separator");
+        valorTotal!.Value.Should().MatchRegex(@"^\d+,\d{2}$", "monetary values use comma separator per IPM XSD");
     }
 
     [Fact]
@@ -307,7 +347,7 @@ public class IpmXmlBuilderTests
         // Assert
         var doc = XDocument.Parse(xml);
         var aliquotaPis = doc.Root?.Element("nf")?.Element("pis_cofins")?.Element("aliquota_pis");
-        aliquotaPis!.Value.Should().MatchRegex(@"^\d+,\d{4}$", "rates use comma separator with 4 decimals");
+        aliquotaPis!.Value.Should().MatchRegex(@"^\d+,\d{2}$", "rates use comma separator with 2 decimals max per IPM XSD");
     }
 
     [Fact]
@@ -355,7 +395,7 @@ public class IpmXmlBuilderTests
         // Assert
         var doc = XDocument.Parse(xml);
         var nbsCode = doc.Root?.Element("itens")?.Element("lista")?.Element("codigo_nbs");
-        nbsCode!.Value.Should().Be("999.99.99");
+        nbsCode!.Value.Should().Be("9999999"); // Dots stripped
     }
 
     [Fact]
@@ -536,7 +576,7 @@ public class IpmXmlBuilderTests
             "vehicle-wash-45200-05",
             "45.20-0-05",
             "Serviços de lavagem, lubrificação e polimento de veículos automotivos",
-            "149.01.00",
+            "1.1803.29.00",
             "14.01",
             "140101",
             "200",

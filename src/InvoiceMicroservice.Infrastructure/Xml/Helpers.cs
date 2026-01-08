@@ -64,7 +64,7 @@ internal static class Helpers
 
     /// <summary>
     /// Strips dots/dashes from code strings. IPM XSD expects integer types for NBS/service list codes.
-    /// Example: "149.01.00" → "1490100", "14.01" → "1401"
+    /// Example: "1.1803.29.00" → "118032900", "14.01" → "1401"
     /// </summary>
     internal static string StripDots(string code)
     {
