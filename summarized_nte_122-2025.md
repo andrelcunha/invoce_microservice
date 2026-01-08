@@ -286,6 +286,96 @@ To receive complete NFS-e return with IBS/CBS data:
 - **IPM Support**: (47) 3531-1500
 - **Online Support Tool**: Available in IPM system
 
+
+## IBS/CBS (NF level)
+
+```XML
+<IBSCBS>
+    <pRedutor>0,00</pRedutor>
+    <valores>
+        <vBC>0,00</vBC> //Valor da base de cálculo (BC) do IBS/CBS antes das reduções para cálculo do tributo bruto. 
+        
+                                      // vBC = vServ - descIncond – vCalcReeRepRes – vISSQN – vPIS - vCOFINS (até 2026) 
+                                      // ou 
+                                      // vBC = vServ - descIncond – vCalcReeRepRes – vISSQN (até 2032) 
+        <uf>
+            <pIBSUF></pIBSUF> //Alíquota da UF para IBS da localidade de incidência parametrizada no sistema.
+            <pRedAliqUF></pRedAliqUF> // Percentual de redução de alíquota estadual.
+            <pAliqEfetUF></pAliqEfetUF> // pAliqEfetUF = pIBSUF x (1 - pRedAliqUF) x (1 - pRedutor)
+                                                              // Se pRedAliqUF não for informado na DPS, então pAliqEfetUF é a própria pIBSUF.
+        </uf> // Grupo de Informações relativas aos valores do IBS Estadual 
+        <mun> // Grupo de Informações relativas aos valores do IBS Municipal 
+            <pIBSMun></pIBSMun> // Alíquota da UF para IBS da localidade de incidência parametrizada no sistema.
+            <pRedAliqMun></pRedAliqMun> //Percentual de redução de alíquota municipal
+            <pAliqEfetMun><pAliqEfetMun> // pAliqEfetMun = pIBSMun x (1 - pRedAliqMun) x (1 - pRedutor) 
+                                                                  // Se pRedAliqMun não for informado na DPS, então pAliqEfetMun é a própria pIBSMun. 
+        </mun>
+        <fed> // Grupo de Informações relativas aos valores da CBS 
+            <pCBS> </pCBS> // Alíquota CBS parametrizada no sistema.
+            <pRedAliqCBS> </pRedAliqCBS> // Percentual da redução de alíquota.
+            <pAliqEfetCBS></pAliqEfetCBS> // pAliqEfetCBS = pCBS x (1 - pRedAliqCBS) x (1 - pRedutor) 
+                                                                  // Se pRedAliqCBS não for informado na DPS, então pAliqEfetCBS é a própria pCBS.
+        </fed>
+    </valores>
+    <totCIBS> // Grupo de Totalizadores
+      <vTotNF></vTotNF> // Valor Total da NF considerando os impostos por fora: IBS e CBS. O IBS e a CBS são por fora, por isso seus valores devem sera dicionados ao valor total da NF. 
+                                        // vTotNF = vLiq (em 2026) --> current case
+                                        // vTotNF = vLiq + vCBS + vIBSTot (a partir de 2027) --> future
+      <gTribRegular>
+        <pAliqEfeRegIBSUF></pAliqEfeRegIBSUF> //Alíquota efetiva de tributação regular do IBS estadual
+        <vTribRegIBSUF></vTribRegIBSUF> // Valor da tributação regular do IBS estadual. 
+                                                                  // vTribRegIBSUF = vBC x pAliqEfeRegIBSUF
+        <pAliqEfeRegIBSMun> </pAliqEfeRegIBSMun> // Alíquota efetiva de tributação regular do IBS municipal
+        <vTribRegIBSMun></vTribRegIBSMun> // Valor da tributação regular do IBS municipal.
+                                                                        // vTribRegIBSMun = vBC x pAliqEfeRegIBSMun 
+        <pAliqEfeRegCBS></pAliqEfeRegCBS> // Alíquota efetiva de tributação regular da CBS 
+        <vTribRegCBS> </vTribRegCBS> // Valor da tributação regular da CBS. 
+                                                            //  vTribRegCBS = vBC x pAliqEfeRegCBS 
+    </gTribRegular>
+    <gTribCompraGov> // Grupo de informações da composição do valor 
+do IBS e da CBS em compras governamentais. --> Generally don't apply on our case.
+      <pIBSUF></pIBSUF> // Alíquota do IBS de competência do Estado 
+      <vIBSUF> </vIBSUF>  // Valor do Tributo do IBS da UF calculado
+      <pIBSMun> </pIBSMun> // Alíquota do IBS de competência do Município 
+      <vIBSMun> <vIBSMun> // Valor do Tributo do IBS do Município calculado
+      <pCBS></pCBS> // Alíquota da CBS 
+      <vCBS> </vCBS> // Valor do Tributo da CBS calculado 
+    </gTribCompraGov>
+    <gIBS> // Grupo de totalizadores referentes ao IBS
+      <vIBSTot> </vIBSTot> // Valor total do IBS. 
+                                          // vIBSTot = vIBSUF + vIBSMun
+      <gIBSCredPres> // Grupo de valores referentes ao crédito presumido para IBS. 
+        <pCredPresIBS> </pCredPresIBS>  // Alíquota do crédito presumido para o IBS
+        <vCredPresIBS> </vCredPresIBS> // Valor do Crédito Presumido para o IBS 
+      </gIBSCredPres>
+      <gIBSUFTot> // Grupo de valores referentes ao IBS Estadual 
+        <vDifUF></vDifUF> // Total do Diferimento do IBS estadual. 
+                                          //vDifUF = vIBSUF x pDifUF
+        <vIBSUF> </vIBSUF> // Total valor do IBS municipal. 
+                                            // vIBSUF = vBC x (pIBSUF ou pAliqEfetUF) 
+      </gIBSUFTot> 
+      <gIBSMunTot> // Grupo de valores referentes ao IBS Municipal 
+        <vDifMun></vDifMun> // Total do Diferimento do IBS municipal. 
+                                                // vDifMun = vIBSMun x pDifMun
+        <vIBSMun> </vIBSMun> // Total valor do IBS municipal. 
+                                                  // vIBSMun = vBC x (pIBSMun ou pAliqEfetMun) 
+      </gIBSMunTot> 
+    </gIBS>
+    <gCBS> // Grupo de valores referentes à CBS 
+            <gCBSCredPres> // Grupo de valores referentes ao crédito presumido para CBS
+              <pCredPresCBS><pCredPresCBS> // Alíquota do crédito presumido para a CBS.
+              <vCredPresCBS></vCredPresCBS> // Valor do Crédito Presumido da CBS. 
+                                                                       // vCredPresCBS = vBC x pCredPresCBS
+            </gCBSCredPres> 
+            <vDivCBS></vDifCBS> // Total do Diferimento CBS. 
+                                                  // vDifCBS = vCBS x pDifCBS 
+            <vCBS></vCBS> // Total valor da CBS da União.
+                                        // vCBS = vBC x (pCBS ou pAliqEfetCBS) 
+    </gCBS>
+  </totCIBS>
+</IBSCBS>
+
+```
 ---
 
 *Document version: 1.4 (17/12/2025)*  

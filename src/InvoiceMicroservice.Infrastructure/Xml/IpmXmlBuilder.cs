@@ -43,7 +43,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         root.Add(new XElement("identificador", invoice.Id.ToString("N")));
         
         // <nf> section - invoice values and tax info
-        root.Add(BuildNfSection(invoice));
+        root.Add(await BuildNfSectionAsync(invoice, cancellationToken));
 
         // <prestador> - service provider (issuer)
         var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
@@ -92,11 +92,11 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return ServiceTypeTaxCodes.Default();
     }
 
-    private XElement BuildNfSection(Invoice invoice)
+    private async Task<XElement> BuildNfSectionAsync(Invoice invoice, CancellationToken cancellationToken)
     {
         var nf = new XElement("nf");
         
-        // Basic invoice values - use period as decimal separator per spec examples
+        // Basic invoice values - use COMMA as decimal separator per IPM XSD
         nf.Add(new XElement("data_fato_gerador", DateTime.Today.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
         nf.Add(new XElement("valor_total", FormatMonetary(invoice.Amount)));
         nf.Add(new XElement("valor_desconto", FormatMonetary(0)));
@@ -116,8 +116,8 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         
         nf.Add(new XElement("observacao", EscapeXmlContent(invoice.ServiceDescription ?? "")));
 
-        // IBS/CBS rates inside <nf> (auto-calculated by IPM, but we send for validation)
-        nf.Add(BuildIbsCbsNfSection(invoice.Amount));
+        // IBS/CBS section inside <nf> - must include pRedutor elements BEFORE valor_* elements per XSD
+        nf.Add(await BuildIbsCbsNfSectionAsync(invoice.Amount, cancellationToken));
 
         return nf;
     }
@@ -134,33 +134,164 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         
         pisCofins.Add(new XElement("base_calculo", FormatMonetary(baseValue)));
         
-        // Rates use comma as decimal separator per spec
+        // Rates use comma with max 2 decimals per XSD pattern
         pisCofins.Add(new XElement("aliquota_pis", FormatRate(_taxConfig.PAliquotaPis)));
         pisCofins.Add(new XElement("aliquota_cofins", FormatRate(_taxConfig.PAliquotaCofins)));
 
         return pisCofins;
     }
 
-    private XElement BuildIbsCbsNfSection(decimal amount)
+    private async Task<XElement> BuildIbsCbsNfSectionAsync(decimal amount, CancellationToken cancellationToken)
     {
-        // This section inside <nf> contains IBS/CBS rates - IPM auto-calculates but validates our input
+        // IBSCBS section inside <nf> per NTE-122/2025
+        // This section contains calculation base, rates, and totals for IBS/CBS
         var section = new XElement("IBSCBS");
         
-        // IBS UF (state-level)
-        section.Add(new XElement("valor_ibs_uf", FormatMonetary(amount * _taxConfig.PIbsUf)));
-        section.Add(new XElement("aliquota_ibs_uf", FormatRate(_taxConfig.PIbsUf)));
-        section.Add(new XElement("valor_reducao_ibs_uf", FormatMonetary(amount * _taxConfig.PRedAliqUf)));
+        // pRedutor: Global reduction percentage (for government purchases - generally 0 for private sector)
+        section.Add(new XElement("pRedutor", FormatRate(0)));
         
-        // IBS MUN (municipal-level)
-        section.Add(new XElement("valor_ibs_mun", FormatMonetary(amount * _taxConfig.PIbsMun)));
-        section.Add(new XElement("aliquota_ibs_mun", FormatRate(_taxConfig.PIbsMun)));
-        section.Add(new XElement("valor_reducao_ibs_mun", FormatMonetary(amount * _taxConfig.PRedAliqMun)));
+        // Valores group - contains calculation base and breakdown by jurisdiction
+        var valores = new XElement("valores");
         
-        // CBS (federal contribution)
-        section.Add(new XElement("valor_cbs", FormatMonetary(amount * _taxConfig.PCbs)));
-        section.Add(new XElement("aliquota_cbs", FormatRate(_taxConfig.PCbs)));
-        section.Add(new XElement("valor_reducao_cbs", FormatMonetary(amount * _taxConfig.PRedAliqCbs)));
-
+        // vBC: Calculation base BEFORE reductions
+        // Formula: vBC = vServ - descIncond - vCalcReeRepRes - vISSQN - vPIS - vCOFINS (until 2026)
+        // For MVP: vBC = invoice amount (no discounts, no other taxes deducted yet)
+        var baseCalculo = amount;
+        valores.Add(new XElement("vBC", FormatMonetary(baseCalculo)));
+        
+        // UF group - State-level IBS information
+        var uf = new XElement("uf");
+        uf.Add(new XElement("pIBSUF", FormatRate(_taxConfig.PIbsUf))); // State IBS rate (from system config)
+        uf.Add(new XElement("pRedAliqUF", FormatRate(_taxConfig.PRedAliqUf))); // State rate reduction %
+        
+        // pAliqEfetUF: Effective state rate after reductions
+        // Formula: pAliqEfetUF = pIBSUF × (1 - pRedAliqUF) × (1 - pRedutor)
+        var aliqEfetUF = _taxConfig.PIbsUf * (1 - _taxConfig.PRedAliqUf) * (1 - 0); // pRedutor = 0 for now
+        uf.Add(new XElement("pAliqEfetUF", FormatRate(aliqEfetUF)));
+        valores.Add(uf);
+        
+        // MUN group - Municipal-level IBS information
+        var mun = new XElement("mun");
+        mun.Add(new XElement("pIBSMun", FormatRate(_taxConfig.PIbsMun))); // Municipal IBS rate
+        mun.Add(new XElement("pRedAliqMun", FormatRate(_taxConfig.PRedAliqMun))); // Municipal rate reduction %
+        
+        // pAliqEfetMun: Effective municipal rate after reductions
+        // Formula: pAliqEfetMun = pIBSMun × (1 - pRedAliqMun) × (1 - pRedutor)
+        var aliqEfetMun = _taxConfig.PIbsMun * (1 - _taxConfig.PRedAliqMun) * (1 - 0);
+        mun.Add(new XElement("pAliqEfetMun", FormatRate(aliqEfetMun)));
+        valores.Add(mun);
+        
+        // FED group - Federal CBS information
+        var fed = new XElement("fed");
+        fed.Add(new XElement("pCBS", FormatRate(_taxConfig.PCbs))); // CBS rate
+        fed.Add(new XElement("pRedAliqCBS", FormatRate(_taxConfig.PRedAliqCbs))); // CBS rate reduction %
+        
+        // pAliqEfetCBS: Effective CBS rate after reductions
+        // Formula: pAliqEfetCBS = pCBS × (1 - pRedAliqCBS) × (1 - pRedutor)
+        var aliqEfetCBS = _taxConfig.PCbs * (1 - _taxConfig.PRedAliqCbs) * (1 - 0);
+        fed.Add(new XElement("pAliqEfetCBS", FormatRate(aliqEfetCBS)));
+        valores.Add(fed);
+        
+        section.Add(valores);
+        
+        // totCIBS group - Totals and breakdown
+        var totCIBS = new XElement("totCIBS");
+        
+        // vTotNF: Total invoice value including taxes
+        // Formula (2026): vTotNF = vLiq (taxes not added yet, will be mandatory from 2027)
+        // For MVP in 2026: vTotNF = invoice amount (taxes are "por fora" = not included)
+        totCIBS.Add(new XElement("vTotNF", FormatMonetary(amount)));
+        
+        // gTribRegular group - Regular taxation values (non-government)
+        var gTribRegular = new XElement("gTribRegular");
+        
+        // State IBS regular taxation
+        gTribRegular.Add(new XElement("pAliqEfeRegIBSUF", FormatRate(aliqEfetUF))); // Effective state rate
+        var vTribRegIBSUF = baseCalculo * aliqEfetUF; // vTribRegIBSUF = vBC × pAliqEfeRegIBSUF
+        gTribRegular.Add(new XElement("vTribRegIBSUF", FormatMonetary(vTribRegIBSUF)));
+        
+        // Municipal IBS regular taxation
+        gTribRegular.Add(new XElement("pAliqEfeRegIBSMun", FormatRate(aliqEfetMun))); // Effective municipal rate
+        var vTribRegIBSMun = baseCalculo * aliqEfetMun; // vTribRegIBSMun = vBC × pAliqEfeRegIBSMun
+        gTribRegular.Add(new XElement("vTribRegIBSMun", FormatMonetary(vTribRegIBSMun)));
+        
+        // CBS regular taxation
+        gTribRegular.Add(new XElement("pAliqEfeRegCBS", FormatRate(aliqEfetCBS))); // Effective CBS rate
+        var vTribRegCBS = baseCalculo * aliqEfetCBS; // vTribRegCBS = vBC × pAliqEfeRegCBS
+        gTribRegular.Add(new XElement("vTribRegCBS", FormatMonetary(vTribRegCBS)));
+        
+        totCIBS.Add(gTribRegular);
+        
+        // gTribCompraGov group - Government purchase taxation (NOT APPLICABLE for private sector)
+        // Omit this group for MVP since we're not handling government contracts
+        // If needed later, this would contain different IBS/CBS calculations for public sector purchases
+        
+        // gIBS group - IBS totals (state + municipal)
+        var gIBS = new XElement("gIBS");
+        
+        // vIBSTot: Total IBS value (state + municipal)
+        // Formula: vIBSTot = vIBSUF + vIBSMun
+        var vIBSUF = baseCalculo * aliqEfetUF;
+        var vIBSMun = baseCalculo * aliqEfetMun;
+        var vIBSTot = vIBSUF + vIBSMun;
+        gIBS.Add(new XElement("vIBSTot", FormatMonetary(vIBSTot)));
+        
+        // gIBSCredPres group - Presumed credit for IBS (tax incentive mechanism)
+        // For MVP: no presumed credits, omit this group
+        // Future: if issuer has tax incentives, add:
+        // <gIBSCredPres>
+        //   <pCredPresIBS>rate</pCredPresIBS>
+        //   <vCredPresIBS>value</vCredPresIBS>
+        // </gIBSCredPres>
+        
+        // gIBSUFTot group - State IBS breakdown
+        var gIBSUFTot = new XElement("gIBSUFTot");
+        
+        // vDifUF: State IBS deferral (postponed payment - usually 0 for immediate taxation)
+        // Formula: vDifUF = vIBSUF × pDifUF (where pDifUF = deferral percentage, typically 0)
+        gIBSUFTot.Add(new XElement("vDifUF", FormatMonetary(0)));
+        
+        // vIBSUF: Total state IBS value
+        // Formula: vIBSUF = vBC × (pIBSUF or pAliqEfetUF)
+        gIBSUFTot.Add(new XElement("vIBSUF", FormatMonetary(vIBSUF)));
+        gIBS.Add(gIBSUFTot);
+        
+        // gIBSMunTot group - Municipal IBS breakdown
+        var gIBSMunTot = new XElement("gIBSMunTot");
+        
+        // vDifMun: Municipal IBS deferral (typically 0)
+        // Formula: vDifMun = vIBSMun × pDifMun
+        gIBSMunTot.Add(new XElement("vDifMun", FormatMonetary(0)));
+        
+        // vIBSMun: Total municipal IBS value
+        // Formula: vIBSMun = vBC × (pIBSMun or pAliqEfetMun)
+        gIBSMunTot.Add(new XElement("vIBSMun", FormatMonetary(vIBSMun)));
+        gIBS.Add(gIBSMunTot);
+        
+        totCIBS.Add(gIBS);
+        
+        // gCBS group - CBS (federal contribution) breakdown
+        var gCBS = new XElement("gCBS");
+        
+        // gCBSCredPres group - Presumed credit for CBS (omit for MVP - no incentives)
+        // Future: if issuer has tax incentives:
+        // <gCBSCredPres>
+        //   <pCredPresCBS>rate</pCredPresCBS>
+        //   <vCredPresCBS>value</vCredPresCBS>
+        // </gCBSCredPres>
+        
+        // vDifCBS: CBS deferral (typically 0)
+        // Formula: vDifCBS = vCBS × pDifCBS
+        gCBS.Add(new XElement("vDifCBS", FormatMonetary(0)));
+        
+        // vCBS: Total CBS value
+        // Formula: vCBS = vBC × (pCBS or pAliqEfetCBS)
+        var vCBS = baseCalculo * aliqEfetCBS;
+        gCBS.Add(new XElement("vCBS", FormatMonetary(vCBS)));
+        
+        totCIBS.Add(gCBS);
+        section.Add(totCIBS);
+        
         return section;
     }
 
@@ -212,11 +343,9 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         lista.Add(new XElement("unidade_quantidade", "1"));
         lista.Add(new XElement("unidade_valor_unitario", FormatMonetary(invoice.Amount)));
         
-        // Service classification codes
-        lista.Add(new XElement("codigo_item_lista_servico", codes.ServiceListCode));
-        
-        // NBS code - MANDATORY for tax reform (error 00366)
-        lista.Add(new XElement("codigo_nbs", codes.NbsCode));
+        // Service codes - strip dots/formatting, must be integers per XSD
+        lista.Add(new XElement("codigo_item_lista_servico", StripDots(codes.ServiceListCode)));
+        lista.Add(new XElement("codigo_nbs", StripDots(codes.NbsCode)));
         
         lista.Add(new XElement("descritivo", EscapeXmlContent(invoice.ServiceDescription)));
         
@@ -242,7 +371,6 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         
         // Determine type: J=Legal entity (CNPJ), F=Natural person (CPF), E=Foreign
         tomador.Add(new XElement("tipo", DetermineTomadorType(consumer.CpfCnpj)));
-        
         tomador.Add(new XElement("cpfcnpj", OnlyDigits(consumer.CpfCnpj)));
         tomador.Add(new XElement("ie", "")); // State registration - empty for most services
         tomador.Add(new XElement("nome_razao_social", EscapeXmlContent(consumer.Name)));
@@ -283,15 +411,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
     private async Task<string> GetTomCodeAsync(string city, string uf, CancellationToken cancellationToken)
     {
         var municipality = await _municipalityRepo.GetByCityAndUfAsync(city, uf, cancellationToken);
-        
-        if (municipality != null)
-        {
-            return municipality.TomCode;
-        }
-
-        // Fallback to Concordia-SC (your HQ city) if municipality not found
-        // In production, you might want to throw an exception or log a warning
-        return "8083";
+        return municipality?.TomCode ?? "8083";
     }
 
     private static string DetermineTomadorType(string cpfCnpj)
@@ -305,10 +425,6 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         return digits.Length == 11 ? "F" : "J";
     }
 
-    /// <summary>
-    /// Escapes XML special characters per IPM specification:
-    /// &lt; &gt; &apos; &quot; &amp; and removes forward slashes
-    /// </summary>
     private static string EscapeXmlContent(string content)
     {
         if (string.IsNullOrEmpty(content))
@@ -332,21 +448,35 @@ public class IpmXmlBuilder : IIpmXmlBuilder
     }
 
     /// <summary>
-    /// Formats monetary values using period as decimal separator (e.g., 1500.00)
-    /// Per IPM spec examples: valor_total, base_calculo use period
+    /// Strips dots/dashes from code strings. IPM XSD expects integer types for NBS/service list codes.
+    /// Example: "149.01.00" → "1490100", "14.01" → "1401"
     /// </summary>
-    private static string FormatMonetary(decimal amount)
+    private static string StripDots(string code)
     {
-        return amount.ToString("F2", CultureInfo.InvariantCulture);
+        if (string.IsNullOrEmpty(code))
+            return "";
+        
+        return code.Replace(".", "").Replace("-", "");
     }
 
     /// <summary>
-    /// Formats percentage rates using comma as decimal separator with 4 decimals (e.g., 5,0000)
-    /// Per IPM spec examples: aliquota_* fields use comma
+    /// Formats monetary values using COMMA as decimal separator with 2 decimals (e.g., 1500,00)
+    /// Per IPM XSD pattern: 0|0,0|0,00|[0-9]{1}\d{0,12}([,]\d{2})?
+    /// </summary>
+    private static string FormatMonetary(decimal amount)
+    {
+        return amount.ToString("F2", CultureInfo.GetCultureInfo("pt-BR"));
+    }
+
+    /// <summary>
+    /// Formats percentage rates using COMMA with max 2 decimals (e.g., 2,50 for 2.5%)
+    /// Per IPM XSD pattern: rates must be 0-2 decimals, NOT 4 decimals
     /// </summary>
     private static string FormatRate(decimal rate)
     {
-        return (rate * 100).ToString("F4", CultureInfo.InvariantCulture).Replace('.', ',');
+        var percentage = rate * 100;
+        // Use pt-BR culture for comma separator, format with 2 decimals
+        return percentage.ToString("F2", CultureInfo.GetCultureInfo("pt-BR"));
     }
 }
 
