@@ -11,6 +11,7 @@ public class InvoiceDbContext : DbContext
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<ServiceTypeTaxMapping> ServiceTypeTaxMappings => Set<ServiceTypeTaxMapping>();
     public DbSet<Municipality> Municipalities => Set<Municipality>();
+    public DbSet<PortalCredentials> PortalCredentials => Set<PortalCredentials>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -171,6 +172,58 @@ public class InvoiceDbContext : DbContext
             entity.HasIndex(e => e.TomCode);
             entity.HasIndex(e => new { e.Name, e.Uf });
             entity.HasIndex(e => e.Uf);
+        });
+
+        // PortalCredentials configuration
+        modelBuilder.Entity<PortalCredentials>(entity =>
+        {
+            entity.ToTable("portal_credentials");
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.IssuerCnpj)
+                .HasColumnName("issuer_cnpj")
+                .HasMaxLength(14)
+                .IsRequired();
+            
+            entity.Property(e => e.ApiBaseUrl)
+                .HasColumnName("api_base_url")
+                .HasMaxLength(500)
+                .IsRequired();
+            
+            entity.Property(e => e.Username)
+                .HasColumnName("username")
+                .HasMaxLength(100)
+                .IsRequired();
+            
+            entity.Property(e => e.PasswordHash)
+                .HasColumnName("password_hash")
+                .HasMaxLength(500)
+                .IsRequired();
+            
+            entity.Property(e => e.RequiresSignature)
+                .HasColumnName("requires_signature");
+            
+            entity.Property(e => e.CertificateData)
+                .HasColumnName("certificate_data");
+            
+            entity.Property(e => e.CertificatePasswordHash)
+                .HasColumnName("certificate_password_hash")
+                .HasMaxLength(500);
+            
+            entity.Property(e => e.IsActive)
+                .HasColumnName("is_active")
+                .HasDefaultValue(true);
+            
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("now() at time zone 'utc'");
+            
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at")
+                .HasDefaultValueSql("now() at time zone 'utc'");
+            
+            // Unique constraint: one credential set per CNPJ
+            entity.HasIndex(e => e.IssuerCnpj).IsUnique();
         });
     }
 }
