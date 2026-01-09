@@ -162,10 +162,6 @@ public class InvoiceDbContext : DbContext
                 .HasColumnName("created_at")
                 .HasMaxLength(20);
             
-            entity.Property(e => e.ExtinguishedAt)
-                .HasColumnName("extinguished_at")
-                .HasMaxLength(20);
-            
             // Indexes for common lookups
             entity.HasIndex(e => e.IbgeCode).IsUnique();
             entity.HasIndex(e => e.TomCode);
