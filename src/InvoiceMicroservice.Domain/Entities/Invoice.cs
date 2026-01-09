@@ -34,6 +34,14 @@ public class Invoice
 
     public string? ServiceTypeKey { get; private set; }
 
+    /// <summary>
+    /// ISS rate (municipal service tax) as decimal (e.g., 0.05 = 5%).
+    /// Stored separately from IBS/CBS rates which come from system config.
+    /// </summary>
+    public decimal IssRate { get; private set; }
+    
+    private Invoice() { }
+
     public static Invoice Create(
         string clientId,
         Cnpj issuerCnpj,
@@ -42,6 +50,7 @@ public class Invoice
         string serviceDescription,
         decimal amount,
         DateTime issuedAt,
+        decimal issRate,
         string? serviceTypeKey = null)
     {
         return new Invoice
@@ -55,6 +64,7 @@ public class Invoice
             Amount = amount,
             IssuedAt = issuedAt,
             ServiceTypeKey = serviceTypeKey,
+            IssRate = issRate,
             Status = InvoiceStatus.Pending,
             RetryCount = 0,
             CreatedAt = DateTime.UtcNow

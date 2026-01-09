@@ -21,6 +21,13 @@ public record EmitInvoiceData
     public required decimal Amount { get; init; }
     public DateTime IssuedAt { get; init; }
     public string? ServiceTypeKey { get; init; }
+    
+    /// <summary>
+    /// ISS rate (Imposto Sobre Serviços) as percentage.
+    /// Example: 5% = 0.05. Range: 2% to 5% depending on municipality and service.
+    /// This is the CURRENT tax (separate from IBS/CBS which start in 2026).
+    /// </summary>
+    public decimal IssRate { get; init; }
 }
 
 public class EmitInvoiceCommandHandler
@@ -54,6 +61,7 @@ public class EmitInvoiceCommandHandler
             request.Data.ServiceDescription,
             request.Data.Amount,
             request.Data.IssuedAt,
+            request.Data.IssRate,
             request.Data.ServiceTypeKey
         );
 

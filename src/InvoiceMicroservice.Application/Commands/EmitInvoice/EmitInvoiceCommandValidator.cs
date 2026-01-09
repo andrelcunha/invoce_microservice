@@ -18,12 +18,12 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
         RuleFor(x => x.ClientId)
             .NotEmpty().WithMessage("ClientId is required.");
 
-            RuleFor(x => x.Data).SetValidator(new InvoiceDataValidator());
+            RuleFor(x => x.Data).SetValidator(new EmitInvoiceDataValidator());
     }
 
-    internal class InvoiceDataValidator : AbstractValidator<EmitInvoiceData>
+    internal class EmitInvoiceDataValidator : AbstractValidator<EmitInvoiceData>
     {
-        public InvoiceDataValidator()
+        public EmitInvoiceDataValidator()
         {
             RuleFor(x => x.Issuer).SetValidator(new IssuerValidator());
             RuleFor(x => x.Consumer).SetValidator(new ConsumerValidator());
@@ -40,6 +40,13 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
             RuleFor(x => x.IssuedAt)
                 .NotEmpty()
                 .LessThanOrEqualTo(DateTime.UtcNow).WithMessage("IssuedAt cannot be in the future.");
+
+            RuleFor(x => x.ServiceTypeKey).MaximumLength(100).When(x => x.ServiceTypeKey != null);
+        
+            // ISS rate validation: Brazilian municipalities can charge 2% to 5%
+            RuleFor(x => x.IssRate)
+                .InclusiveBetween(0.02m, 0.05m)
+                .WithMessage("ISS rate must be between 2% (0.02) and 5% (0.05)");
         }
     }
 

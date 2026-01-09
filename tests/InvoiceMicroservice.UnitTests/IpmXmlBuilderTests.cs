@@ -472,6 +472,7 @@ public class IpmXmlBuilderTests
             "Serviço de lavagem completa do veículo",
             1500.00m,
             DateTime.UtcNow,
+            0.05m,
             "vehicle-wash-45200-05"
         );
     }
@@ -519,7 +520,8 @@ public class IpmXmlBuilderTests
             consumerJson,
             "Serviço de polimento",
             500.00m,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            0.05m
         );
     }
 
@@ -566,7 +568,8 @@ public class IpmXmlBuilderTests
             consumerJson,
             "Serviço <premium> com 'aspas' & caracteres especiais / barras",
             750.00m,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            0.05m
         );
     }
 
