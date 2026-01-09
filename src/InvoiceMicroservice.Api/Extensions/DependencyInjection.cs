@@ -15,7 +15,7 @@ public static class DependencyInjection
         services.AddScoped<IMunicipalityRepository, MunicipalityRepository>();
 
         // Services
-        services.AddScoped<IIpmXmlBuilder, IpmXmlBuilder>();
+        services.AddScoped<IInvoiceXmlBuilder, IpmXmlBuilder>();
 
         // Command handlers
         services.AddScoped<EmitInvoiceCommandHandler>();

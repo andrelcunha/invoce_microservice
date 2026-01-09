@@ -6,12 +6,7 @@ using InvoiceMicroservice.Domain.Interfaces;
 
 namespace InvoiceMicroservice.Infrastructure.Xml;
 
-public interface IIpmXmlBuilder
-{
-    Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default);
-}
-
-public class IpmXmlBuilder : IIpmXmlBuilder
+public class IpmXmlBuilder : IInvoiceXmlBuilder
 {
     private readonly TaxConfig _taxConfig;
     private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;

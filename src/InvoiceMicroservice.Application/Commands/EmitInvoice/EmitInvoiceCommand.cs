@@ -33,12 +33,12 @@ public record EmitInvoiceData
 public class EmitInvoiceCommandHandler
 {
     private readonly IInvoiceRepository _repository;
-    private readonly IIpmXmlBuilder _xmlBuilder;
+    private readonly IInvoiceXmlBuilder _xmlBuilder;
     private readonly IIpmClient _ipmClient;
 
     public EmitInvoiceCommandHandler(
         IInvoiceRepository repository, 
-        IIpmXmlBuilder xmlBuilder,
+        IInvoiceXmlBuilder xmlBuilder,
         IIpmClient ipmClient)
     {
         _repository = repository;
