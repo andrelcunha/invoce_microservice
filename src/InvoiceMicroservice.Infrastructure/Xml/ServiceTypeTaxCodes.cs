@@ -35,10 +35,10 @@ internal record ServiceTypeTaxCodes
     }
 
     public static ServiceTypeTaxCodes Default() => new(
-        "123456789",
-        "0024",
-        "030102",
-        "200",
-        "200028"
+        "118032900",
+        "140101",
+        "050101",
+        "000",
+        "000001"
     );
 }
