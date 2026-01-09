@@ -350,7 +350,7 @@ public class IpmXmlBuilder : IIpmXmlBuilder
         lista.Add(new XElement("descritivo", Helpers.EscapeXmlContent(invoice.ServiceDescription)));
         
         // Tax rates - use 4 decimal places for rates
-        lista.Add(new XElement("aliquota_item_lista_servico", Helpers.FormatRate(_taxConfig.PIbsMun))); 
+        lista.Add(new XElement("aliquota_item_lista_servico", Helpers.FormatRate(invoice.IssRate)));
         
         // situacao_tributaria: 4-digit code
         lista.Add(new XElement("situacao_tributaria", "0000"));
