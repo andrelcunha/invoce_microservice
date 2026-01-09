@@ -161,6 +161,10 @@ public class InvoiceDbContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasColumnName("created_at")
                 .HasMaxLength(20);
+
+            entity.Property(e => e.PortalType)
+                .HasColumnName("portal_type")
+                .HasMaxLength(20);
             
             // Indexes for common lookups
             entity.HasIndex(e => e.IbgeCode).IsUnique();
