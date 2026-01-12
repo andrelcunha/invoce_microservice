@@ -43,7 +43,7 @@ public class IpmApiClient : IIpmClient
         _httpClient.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
 
         // Basic Authentication
-        var authBytes = Encoding.UTF8.GetBytes($"{credentials.Username}:{credentials}");
+        var authBytes = Encoding.UTF8.GetBytes($"{credentials.Username}:{credentials.PasswordHash}");
         var authHeader = Convert.ToBase64String(authBytes);
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
     }
@@ -219,13 +219,10 @@ public class IpmApiClient : IIpmClient
 
     private string SignXml(string xml, byte[] certificateData, string certificatePassword)
     {
-        _logger.LogWarning("Signing XML with provided certificate");
-        _logger.LogWarning("Certificate data length: {CertificateDataLength}", certificateData.Length);
-        _logger.LogWarning("Certificate password hash: {PasswordHash}", certificatePassword);
-        var certificate = new X509Certificate2(
-            certificateData,
-            certificatePassword,
-            X509KeyStorageFlags.Exportable);
+        var certificate = X509CertificateLoader.LoadPkcs12(
+            certificateData, 
+            certificatePassword, 
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
 
         // Load XML document
         var xmlDoc = new XmlDocument { PreserveWhitespace = true };
