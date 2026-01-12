@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IServiceTypeTaxMappingRepository, ServiceTypeTaxMappingRepository>();
         services.AddScoped<IMunicipalityRepository, MunicipalityRepository>();
+        services.AddScoped<IPortalCredentialsRepository, PortalCredentialsRepository>();
 
         // Services
         services.AddScoped<IInvoiceXmlBuilder, IpmXmlBuilder>();
