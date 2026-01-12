@@ -27,12 +27,6 @@ public class Municipality
     /// </summary>
     public string TomCode { get; private set; } = null!;
 
-    /// <summary>
-    /// NFS-e portal type used by this municipality.
-    /// Values: "IPM", "Nacional", "Betha", "GINFES", etc.
-    /// </summary>
-    public string PortalType { get; private set; } = "IPM"; // Default to IPM for backward compatibility
-    
     
     /// <summary>
     /// Date when municipality was officially created (ISO format)
@@ -47,7 +41,6 @@ public class Municipality
         string name,
         string uf,
         string tomCode,
-        string portalType = "IPM",
         string? createdAt = null)
     {
         return new Municipality
@@ -56,7 +49,6 @@ public class Municipality
             Name = name,
             Uf = uf,
             TomCode = tomCode,
-            PortalType = portalType,
             CreatedAt = createdAt,
         };
     }
