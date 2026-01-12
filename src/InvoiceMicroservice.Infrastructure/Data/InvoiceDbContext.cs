@@ -162,11 +162,7 @@ public class InvoiceDbContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasColumnName("created_at")
                 .HasMaxLength(20);
-
-            entity.Property(e => e.PortalType)
-                .HasColumnName("portal_type")
-                .HasMaxLength(20);
-            
+                
             // Indexes for common lookups
             entity.HasIndex(e => e.IbgeCode).IsUnique();
             entity.HasIndex(e => e.TomCode);
@@ -183,6 +179,15 @@ public class InvoiceDbContext : DbContext
             entity.Property(e => e.IssuerCnpj)
                 .HasColumnName("issuer_cnpj")
                 .HasMaxLength(14)
+                .IsRequired();
+            
+            entity.Property(e => e.MunicipalityId)
+                .HasColumnName("municipality_id")
+                .IsRequired();
+            
+            entity.Property(e => e.PortalType)
+                .HasColumnName("portal_type")
+                .HasMaxLength(50)
                 .IsRequired();
             
             entity.Property(e => e.ApiBaseUrl)
@@ -222,8 +227,17 @@ public class InvoiceDbContext : DbContext
                 .HasColumnName("updated_at")
                 .HasDefaultValueSql("now() at time zone 'utc'");
             
+            // Foreign key relationship
+            entity.HasOne(e => e.Municipality)
+                .WithMany()
+                .HasForeignKey(e => e.MunicipalityId)
+                .OnDelete(DeleteBehavior.Restrict);
+            
             // Unique constraint: one credential set per CNPJ
             entity.HasIndex(e => e.IssuerCnpj).IsUnique();
+            
+            // Index for quick portal type lookups
+            entity.HasIndex(e => e.PortalType);
         });
     }
 }
