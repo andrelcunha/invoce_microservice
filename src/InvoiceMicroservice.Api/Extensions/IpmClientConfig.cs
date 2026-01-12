@@ -27,17 +27,17 @@ public static class IpmClientConfig
             // Real IPM API client
             var options = new IpmApiClientOptions
             {
-                BaseUrl = configuration["IpmClient:ApiBaseUrl"] 
-                    ?? throw new InvalidOperationException("IpmClient:ApiBaseUrl required when Mode=Api"),
-                Username = configuration["IpmClient:Username"] 
-                    ?? throw new InvalidOperationException("IpmClient:Username required when Mode=Api"),
-                Password = configuration["IpmClient:Password"] 
-                    ?? throw new InvalidOperationException("IpmClient:Password required when Mode=Api"),
+                // BaseUrl = configuration["IpmClient:ApiBaseUrl"] 
+                //     ?? throw new InvalidOperationException("IpmClient:ApiBaseUrl required when Mode=Api"),
+                // Username = configuration["IpmClient:Username"] 
+                //     ?? throw new InvalidOperationException("IpmClient:Username required when Mode=Api"),
+                // Password = configuration["IpmClient:Password"] 
+                //     ?? throw new InvalidOperationException("IpmClient:Password required when Mode=Api"),
                 TimeoutSeconds = int.Parse(configuration["IpmClient:TimeoutSeconds"] ?? "30"),
                 RetryAttempts = int.Parse(configuration["IpmClient:RetryAttempts"] ?? "3"),
-                RequiresSignature = bool.Parse(configuration["IpmClient:RequiresSignature"] ?? "false"),
-                CertificatePath = configuration["IpmClient:CertificatePath"],
-                CertificatePassword = configuration["IpmClient:CertificatePassword"]
+                // RequiresSignature = bool.Parse(configuration["IpmClient:RequiresSignature"] ?? "false"),
+                // CertificatePath = configuration["IpmClient:CertificatePath"],
+                // CertificatePassword = configuration["IpmClient:CertificatePassword"]
             };
 
             services.AddHttpClient<IIpmClient, IpmApiClient>()
@@ -52,8 +52,9 @@ public static class IpmClientConfig
                 var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
                 var httpClient = httpClientFactory.CreateClient(nameof(IpmApiClient));
                 var logger = sp.GetRequiredService<ILogger<IpmApiClient>>();
+                var credentialsRepo = sp.GetRequiredService<IPortalCredentialsRepository>();
                 
-                return new IpmApiClient(httpClient, logger, options);
+                return new IpmApiClient(httpClient, logger, options, credentialsRepo);
             });
         }
         else
