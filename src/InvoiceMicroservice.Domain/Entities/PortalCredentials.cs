@@ -1,8 +1,8 @@
 namespace InvoiceMicroservice.Domain.Entities;
 
 /// <summary>
-/// Portal credentials for a specific issuer.
-/// Each company needs its own login and optional certificate for digital signature.
+/// Portal credentials for NFS-e emission tied to a specific municipality.
+/// Each issuer (CNPJ) has credentials for their operating municipality's portal.
 /// </summary>
 public class PortalCredentials
 {
@@ -14,23 +14,38 @@ public class PortalCredentials
     public string IssuerCnpj { get; private set; } = string.Empty;
     
     /// <summary>
-    /// Portal API base URL (may differ per municipality).
-    /// Example: https://concordia.atende.net/?pg=rest&service=WNERestServiceNFSe&cidade=padrao
+    /// Reference to the municipality where this issuer operates.
+    /// Determines TOM code and geographic data for XML generation.
+    /// </summary>
+    public Guid MunicipalityId { get; private set; }
+    public Municipality Municipality { get; private set; } = null!; // Navigation property
+    
+    /// <summary>
+    /// NFS-e portal type for this credential.
+    /// Values: "IPM", "Nacional", "Betha", "GINFES", "WebISS", etc.
+    /// Determines which XML builder and submission client to use.
+    /// </summary>
+    public string PortalType { get; private set; } = string.Empty;
+    
+    /// <summary>
+    /// Portal API base URL (may differ per municipality even with same portal type).
+    /// Example IPM: https://concordia.atende.net/?pg=rest&service=WNERestServiceNFSe&cidade=padrao
+    /// Example Nacional: https://nfse.portoalegre.rs.gov.br/ws/nfse.asmx
     /// </summary>
     public string ApiBaseUrl { get; private set; } = string.Empty;
     
     /// <summary>
-    /// Portal username (Basic Auth).
+    /// Portal username (Basic Auth or similar).
     /// </summary>
     public string Username { get; private set; } = string.Empty;
     
     /// <summary>
-    /// Portal password (Basic Auth) - ENCRYPTED in database.
+    /// Portal password (encrypted at rest).
     /// </summary>
     public string PasswordHash { get; private set; } = string.Empty;
     
     /// <summary>
-    /// Whether digital signature is required for this municipality.
+    /// Whether digital signature is required for this portal/municipality.
     /// </summary>
     public bool RequiresSignature { get; private set; }
     
@@ -58,6 +73,8 @@ public class PortalCredentials
 
     public static PortalCredentials Create(
         string issuerCnpj,
+        Guid municipalityId,
+        string portalType,
         string apiBaseUrl,
         string username,
         string passwordHash,
@@ -69,6 +86,8 @@ public class PortalCredentials
         {
             Id = Guid.NewGuid(),
             IssuerCnpj = issuerCnpj,
+            MunicipalityId = municipalityId,
+            PortalType = portalType.ToUpperInvariant(),
             ApiBaseUrl = apiBaseUrl,
             Username = username,
             PasswordHash = passwordHash,
