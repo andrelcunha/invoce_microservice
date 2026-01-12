@@ -5,6 +5,7 @@ using System.Security.Cryptography.Xml;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
+using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -18,37 +19,33 @@ public class IpmApiClient : IIpmClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<IpmApiClient> _logger;
+    private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly IpmApiClientOptions _options;
+
     private readonly CookieContainer _cookieContainer;
 
     public IpmApiClient(
         HttpClient httpClient,
         ILogger<IpmApiClient> logger,
-        IpmApiClientOptions options)
+        IpmApiClientOptions options,
+        IPortalCredentialsRepository credentialsRepo)
     {
+        _options = options;
         _httpClient = httpClient;
         _logger = logger;
-        _options = options;
+        _credentialsRepo = credentialsRepo;
         _cookieContainer = new CookieContainer();
 
-        ConfigureHttpClient();
     }
 
-    private void ConfigureHttpClient()
+    private void ConfigureHttpClient(PortalCredentials credentials)
     {
-        _httpClient.BaseAddress = new Uri(_options.BaseUrl);
         _httpClient.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
 
         // Basic Authentication
-        var authBytes = Encoding.UTF8.GetBytes($"{_options.Username}:{_options.Password}");
+        var authBytes = Encoding.UTF8.GetBytes($"{credentials.Username}:{credentials}");
         var authHeader = Convert.ToBase64String(authBytes);
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
-
-        _logger.LogInformation(
-            "IpmApiClient configured. BaseUrl: {BaseUrl}, Timeout: {Timeout}s, Signature: {RequiresSignature}",
-            _options.BaseUrl,
-            _options.TimeoutSeconds,
-            _options.RequiresSignature);
     }
 
     public async Task<IpmSubmissionResult> SubmitInvoiceAsync(
@@ -59,6 +56,28 @@ public class IpmApiClient : IIpmClient
         var attempt = 0;
         Exception? lastException = null;
 
+        string? issuerCnpj = GetIssuerCnpjFromXml(xml);
+        if (string.IsNullOrEmpty(issuerCnpj))
+        {
+            return new IpmSubmissionResult
+            {
+                Success = false,
+                Messages = new List<string> { "Cannot extract issuer CNPJ from XML" }
+            };
+        }
+
+        var credentials = await _credentialsRepo.GetByIssuerCnpjAsync(issuerCnpj, cancellationToken);
+        if (credentials == null)
+        {
+            return new IpmSubmissionResult
+            {
+                Success = false,
+                Messages = new List<string> { $"No IPM credentials configured for CNPJ {issuerCnpj}" }
+            };
+        }
+        ConfigureHttpClient(credentials);
+
+
         while (attempt < _options.RetryAttempts)
         {
             attempt++;
@@ -66,14 +85,14 @@ public class IpmApiClient : IIpmClient
             try
             {
                 _logger.LogInformation(
-                    "Submitting invoice to IPM (attempt {Attempt}/{MaxAttempts}, testMode: {TestMode})",
+                    "Submitting invoice (attempt {Attempt}/{MaxAttempts}, testMode: {TestMode})",
                     attempt,
                     _options.RetryAttempts,
                     isTestMode);
 
                 // Sign XML if required
-                var finalXml = _options.RequiresSignature
-                    ? SignXml(xml)
+                var finalXml = credentials.RequiresSignature
+                    ? SignXml(xml, credentials.CertificateData!, credentials.CertificatePasswordHash!)
                     : xml;
 
                 // Build multipart/form-data request
@@ -83,17 +102,18 @@ public class IpmApiClient : IIpmClient
                 content.Add(xmlContent, "xml", "invoice.xml");
 
                 // Include cookies from previous session
-                var request = new HttpRequestMessage(HttpMethod.Post, _options.BaseUrl)
+                var baseUrl = credentials.ApiBaseUrl;
+                var request = new HttpRequestMessage(HttpMethod.Post, baseUrl)
                 {
                     Content = content
                 };
-                AddCookiesToRequest(request);
+                AddCookiesToRequest(request, baseUrl);
 
                 // Send request
                 var response = await _httpClient.SendAsync(request, cancellationToken);
 
                 // Capture cookies for subsequent requests
-                CaptureCookiesFromResponse(response);
+                CaptureCookiesFromResponse(response, baseUrl);
 
                 // Read response body
                 var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -160,6 +180,13 @@ public class IpmApiClient : IIpmClient
         };
     }
 
+    private static string? GetIssuerCnpjFromXml(string xml)
+    {
+        var doc = XDocument.Parse(xml);
+        var issuerCnpj = doc.Root?.Element("prestador")?.Element("cpfcnpj")?.Value;
+        return issuerCnpj;
+    }
+
     public async Task<IpmQueryResult> QueryInvoiceAsync(
         string protocol,
         CancellationToken cancellationToken = default)
@@ -190,58 +217,47 @@ public class IpmApiClient : IIpmClient
         });
     }
 
-    private string SignXml(string xml)
+    private string SignXml(string xml, byte[] certificateData, string certificatePassword)
     {
-        try
+        _logger.LogWarning("Signing XML with provided certificate");
+        _logger.LogWarning("Certificate data length: {CertificateDataLength}", certificateData.Length);
+        _logger.LogWarning("Certificate password hash: {PasswordHash}", certificatePassword);
+        var certificate = new X509Certificate2(
+            certificateData,
+            certificatePassword,
+            X509KeyStorageFlags.Exportable);
+
+        // Load XML document
+        var xmlDoc = new XmlDocument { PreserveWhitespace = true };
+        xmlDoc.LoadXml(xml);
+
+        // Create signed XML
+        var signedXml = new SignedXml(xmlDoc)
         {
-            if (string.IsNullOrEmpty(_options.CertificatePath))
-            {
-                throw new InvalidOperationException("Certificate path required for XML signing but not configured");
-            }
+            SigningKey = certificate.GetRSAPrivateKey()
+        };
 
-            // Load certificate from PFX
-            var certificate = new X509Certificate2(
-                _options.CertificatePath,
-                _options.CertificatePassword,
-                X509KeyStorageFlags.Exportable);
+        // Reference the entire document
+        var reference = new Reference { Uri = "" };
+        reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
+        reference.AddTransform(new XmlDsigC14NTransform());
+        signedXml.AddReference(reference);
 
-            // Load XML document
-            var xmlDoc = new XmlDocument { PreserveWhitespace = true };
-            xmlDoc.LoadXml(xml);
+        // Add key info
+        var keyInfo = new KeyInfo();
+        keyInfo.AddClause(new KeyInfoX509Data(certificate));
+        signedXml.KeyInfo = keyInfo;
 
-            // Create signed XML
-            var signedXml = new SignedXml(xmlDoc)
-            {
-                SigningKey = certificate.GetRSAPrivateKey()
-            };
+        // Compute signature
+        signedXml.ComputeSignature();
 
-            // Reference the entire document
-            var reference = new Reference { Uri = "" };
-            reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
-            reference.AddTransform(new XmlDsigC14NTransform());
-            signedXml.AddReference(reference);
+        // Append signature to XML
+        var signatureElement = signedXml.GetXml();
+        xmlDoc.DocumentElement?.AppendChild(xmlDoc.ImportNode(signatureElement, true));
 
-            // Add key info
-            var keyInfo = new KeyInfo();
-            keyInfo.AddClause(new KeyInfoX509Data(certificate));
-            signedXml.KeyInfo = keyInfo;
+        _logger.LogDebug("XML signed successfully using certificate: {Thumbprint}", certificate.Thumbprint);
 
-            // Compute signature
-            signedXml.ComputeSignature();
-
-            // Append signature to XML
-            var signatureElement = signedXml.GetXml();
-            xmlDoc.DocumentElement?.AppendChild(xmlDoc.ImportNode(signatureElement, true));
-
-            _logger.LogDebug("XML signed successfully using certificate: {Thumbprint}", certificate.Thumbprint);
-
-            return xmlDoc.OuterXml;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to sign XML");
-            throw new InvalidOperationException("XML signature failed", ex);
-        }
+        return xmlDoc.OuterXml; 
     }
 
     private IpmSubmissionResult ParseResponse(string responseXml)
@@ -324,9 +340,9 @@ public class IpmApiClient : IIpmClient
         }
     }
 
-    private void AddCookiesToRequest(HttpRequestMessage request)
+    private void AddCookiesToRequest(HttpRequestMessage request, string baseUrl)
     {
-        var cookies = _cookieContainer.GetCookies(new Uri(_options.BaseUrl));
+        var cookies = _cookieContainer.GetCookies(new Uri(baseUrl));
         if (cookies.Count > 0)
         {
             var cookieHeader = string.Join("; ", cookies.Cast<Cookie>().Select(c => $"{c.Name}={c.Value}"));
@@ -336,13 +352,13 @@ public class IpmApiClient : IIpmClient
         }
     }
 
-    private void CaptureCookiesFromResponse(HttpResponseMessage response)
+    private void CaptureCookiesFromResponse(HttpResponseMessage response, string baseUrl)
     {
         if (response.Headers.TryGetValues("Set-Cookie", out var setCookieHeaders))
         {
             foreach (var header in setCookieHeaders)
             {
-                _cookieContainer.SetCookies(new Uri(_options.BaseUrl), header);
+                _cookieContainer.SetCookies(new Uri(baseUrl), header);
                 _logger.LogDebug("Captured cookie: {SetCookieHeader}", header);
             }
         }
@@ -354,12 +370,12 @@ public class IpmApiClient : IIpmClient
 /// </summary>
 public record IpmApiClientOptions
 {
-    public required string BaseUrl { get; init; }
-    public required string Username { get; init; }
-    public required string Password { get; init; }
+    // public required string BaseUrl { get; init; }
+    // public required string Username { get; init; }
+    // public required string Password { get; init; }
     public int TimeoutSeconds { get; init; } = 30;
     public int RetryAttempts { get; init; } = 3;
-    public bool RequiresSignature { get; init; }
-    public string? CertificatePath { get; init; }
-    public string? CertificatePassword { get; init; }
+    // public bool RequiresSignature { get; init; }
+    // public string? CertificatePath { get; init; }
+    // public string? CertificatePassword { get; init; }
 }
