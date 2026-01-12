@@ -36,4 +36,8 @@ public record CreatePortalCredentialsDto
     /// Required if RequiresSignature is true.
     /// </summary>
     public string? CertificatePassword { get; init; }
+
+    public int MunicipalityId { get; init; }
+
+    public string PortalType { get; init; } = string.Empty;
 }

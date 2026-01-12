@@ -157,6 +157,8 @@ public class PortalCredentialsController : ControllerBase
 
         var credentials = PortalCredentials.Create(
             dto.IssuerCnpj,
+            dto.MunicipalityId,
+            dto.PortalType,
             dto.ApiBaseUrl,
             dto.Username,
             HashPassword(dto.Password),

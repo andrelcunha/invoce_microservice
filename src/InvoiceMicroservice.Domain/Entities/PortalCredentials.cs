@@ -17,7 +17,7 @@ public class PortalCredentials
     /// Reference to the municipality where this issuer operates.
     /// Determines TOM code and geographic data for XML generation.
     /// </summary>
-    public Guid MunicipalityId { get; private set; }
+    public int MunicipalityId { get; private set; }
     public Municipality Municipality { get; private set; } = null!; // Navigation property
     
     /// <summary>
@@ -73,7 +73,7 @@ public class PortalCredentials
 
     public static PortalCredentials Create(
         string issuerCnpj,
-        Guid municipalityId,
+        int municipalityId,
         string portalType,
         string apiBaseUrl,
         string username,

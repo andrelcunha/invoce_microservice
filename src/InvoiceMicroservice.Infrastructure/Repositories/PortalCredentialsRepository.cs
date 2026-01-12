@@ -21,9 +21,12 @@ public class PortalCredentialsRepository : IPortalCredentialsRepository
             .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
     }
 
-    public async Task<PortalCredentials?> GetByIssuerCnpjAsync(string issuerCnpj, CancellationToken cancellationToken = default)
+    public async Task<PortalCredentials?> GetByIssuerCnpjAsync(
+        string issuerCnpj, 
+        CancellationToken cancellationToken = default)
     {
         return await _context.PortalCredentials
+            .Include(c => c.Municipality) // Eager load municipality for factory
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.IssuerCnpj == issuerCnpj && c.IsActive, cancellationToken);
     }
