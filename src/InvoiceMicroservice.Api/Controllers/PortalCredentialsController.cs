@@ -182,6 +182,8 @@ public class PortalCredentialsController : ControllerBase
             {
                 credentials.Id,
                 credentials.IssuerCnpj,
+                credentials.MunicipalityId,
+                credentials.PortalType,
                 credentials.ApiBaseUrl,
                 credentials.Username,
                 credentials.RequiresSignature,
