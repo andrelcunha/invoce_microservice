@@ -123,11 +123,12 @@ public class PortalCredentialsController : ControllerBase
     [ProducesResponseType(typeof(PortalCredentials), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Create([FromForm] CreatePortalCredentialsDto dto, [FromForm] UploadCertificateForm certificate)
+    public async Task<IActionResult> Create([FromForm] CreatePortalCredentialsDto dto, [FromForm] UploadCertificateForm? certificate = null)
     {
-        // Validate file if signature is required
         if (dto.RequiresSignature)
         {
+            if (certificate?.Certificate == null)
+                return BadRequest(new { error = "Certificate is required when RequiresSignature is true" });
 
             if (!certificate.Certificate.FileName.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { error = "Certificate must be a .pfx file" });
@@ -146,13 +147,18 @@ public class PortalCredentialsController : ControllerBase
         if (existing != null)
             return Conflict(new { error = $"Credentials for CNPJ {dto.IssuerCnpj} already exist" });
 
-        // Read certificate bytes from uploaded file
+        // Read certificate bytes from uploaded file (only if provided)
         byte[]? certificateData = null;
-        if (certificate != null && certificate.Certificate.Length > 0)
+        string? certificatePasswordHash = null;
+        
+        if (certificate?.Certificate != null && certificate.Certificate.Length > 0)
         {
             using var memoryStream = new MemoryStream();
             await certificate.Certificate.CopyToAsync(memoryStream);
             certificateData = memoryStream.ToArray();
+            
+            if (!string.IsNullOrWhiteSpace(dto.CertificatePassword))
+                certificatePasswordHash = HashPassword(dto.CertificatePassword);
         }
 
         var credentials = PortalCredentials.Create(
@@ -164,7 +170,7 @@ public class PortalCredentialsController : ControllerBase
             HashPassword(dto.Password),
             dto.RequiresSignature,
             certificateData,
-            dto.CertificatePassword != null ? HashPassword(dto.CertificatePassword) : null
+            certificatePasswordHash
         );
 
         await _repository.AddAsync(credentials);
