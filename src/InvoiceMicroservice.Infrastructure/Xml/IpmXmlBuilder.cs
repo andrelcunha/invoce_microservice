@@ -101,11 +101,12 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         nf.Add(new XElement("valor_rps", Helpers.FormatMonetary(0)));
         
         // PIS/COFINS section (required when applicable)
-        nf.Add(BuildPisCofinsSection(invoice.Amount));
+        nf.Add(BuildPisCofinsSection(invoice));
         
         // Calculate PIS/COFINS values for display
-        var pisValue = invoice.Amount * _taxConfig.PAliquotaPis;
-        var cofinsValue = invoice.Amount * _taxConfig.PAliquotaCofins;
+        // var pisValue = invoice.Amount * _taxConfig.PAliquotaPis;
+        var pisValue = invoice.Amount * invoice.AliquotaPis;
+        var cofinsValue = invoice.Amount * invoice.AliquotaCofins;
         nf.Add(new XElement("valor_pis", Helpers.FormatMonetary(pisValue)));
         nf.Add(new XElement("valor_cofins", Helpers.FormatMonetary(cofinsValue)));
         
@@ -117,7 +118,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return nf;
     }
 
-    private XElement BuildPisCofinsSection(decimal baseValue)
+    private XElement BuildPisCofinsSection(Invoice invoice)
     {
         var pisCofins = new XElement("pis_cofins");
         
@@ -127,11 +128,11 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         // Retention type: 1=Retained, 2=Not Retained, 3=PIS Retained/COFINS Not, 4=PIS Not/COFINS Retained
         pisCofins.Add(new XElement("tipo_retencao", "2")); // Default: not retained
         
-        pisCofins.Add(new XElement("base_calculo", Helpers.FormatMonetary(baseValue)));
+        pisCofins.Add(new XElement("base_calculo", Helpers.FormatMonetary(invoice.Amount)));
         
         // Rates use comma with max 2 decimals per XSD pattern
-        pisCofins.Add(new XElement("aliquota_pis", Helpers.FormatRate(_taxConfig.PAliquotaPis)));
-        pisCofins.Add(new XElement("aliquota_cofins", Helpers.FormatRate(_taxConfig.PAliquotaCofins)));
+        pisCofins.Add(new XElement("aliquota_pis", Helpers.FormatRate(invoice.AliquotaPis)));
+        pisCofins.Add(new XElement("aliquota_cofins", Helpers.FormatRate(invoice.AliquotaCofins)));
 
         return pisCofins;
     }
@@ -313,7 +314,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         gIBSCBS.Add(new XElement("CST", codes.TaxSituationCode));
         
         // cClassTrib: Tax Classification Code (6 digits)
-        gIBSCBS.Add(new XElement("cClassTrib", codes.TaxClassificationCode));
+        gIBSCBS.Add(new XElement("cClassTrib", "000001")); // Hardcoded for now, can be made dynamic later
         
         trib.Add(gIBSCBS);
         valores.Add(trib);

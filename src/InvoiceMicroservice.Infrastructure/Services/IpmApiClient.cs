@@ -367,12 +367,7 @@ public class IpmApiClient : IIpmClient
 /// </summary>
 public record IpmApiClientOptions
 {
-    // public required string BaseUrl { get; init; }
-    // public required string Username { get; init; }
-    // public required string Password { get; init; }
+
     public int TimeoutSeconds { get; init; } = 30;
     public int RetryAttempts { get; init; } = 3;
-    // public bool RequiresSignature { get; init; }
-    // public string? CertificatePath { get; init; }
-    // public string? CertificatePassword { get; init; }
 }

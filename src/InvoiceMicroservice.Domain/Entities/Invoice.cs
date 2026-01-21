@@ -34,11 +34,23 @@ public class Invoice
 
     public string? ServiceTypeKey { get; private set; }
 
+    public string? PisCofinsCts { get; private set; }
+
+    public decimal AliquotaPis { get; private set; }
+    public decimal AliquotaCofins { get; private set; }
+    public string? TipoRetencaoPisCofins { get; private set; } // 1 = Pis/Cofins Retido, 2 = Pis/Cofins Não Retido, 3 = Pis Retido Cofins Não Retido, 4 = Pis Não Retido Cofins Retido
+
     /// <summary>
     /// ISS rate (municipal service tax) as decimal (e.g., 0.05 = 5%).
     /// Stored separately from IBS/CBS rates which come from system config.
     /// </summary>
     public decimal IssRate { get; private set; }
+
+    // Código de Tributação Municipal
+    public string? MunicipalTaxCode { get; private set; }
+
+    public string? IbsCbsClassTrib { get; private set; }
+    public string? IbsCbsCst { get; private set; }
     
     private Invoice() { }
 
@@ -51,7 +63,15 @@ public class Invoice
         decimal amount,
         DateTime issuedAt,
         decimal issRate,
-        string? serviceTypeKey = null)
+        string? municipalTaxCode = null,
+        string? pisCofinsCts = null,
+        string? serviceTypeKey = null,
+        decimal aliquotaPis = 0,
+        decimal aliquotaCofins = 0,
+        string? tipoRetencaoPisCofins = null,
+        string? ibsCbsClassTrib = null,
+        string? ibsCbsCst = null
+        )
     {
         return new Invoice
         {
@@ -67,7 +87,14 @@ public class Invoice
             IssRate = issRate,
             Status = InvoiceStatus.Pending,
             RetryCount = 0,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            MunicipalTaxCode = municipalTaxCode,
+            PisCofinsCts = pisCofinsCts,
+            AliquotaPis = aliquotaPis,
+            AliquotaCofins = aliquotaCofins,
+            TipoRetencaoPisCofins = tipoRetencaoPisCofins,
+            IbsCbsClassTrib = ibsCbsClassTrib,
+            IbsCbsCst = ibsCbsCst
         };
     }
 

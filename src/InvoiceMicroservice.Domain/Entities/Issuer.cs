@@ -1,3 +1,5 @@
+using InvoiceMicroservice.Domain.Enums;
+
 namespace InvoiceMicroservice.Domain.Entities;
 
 public class Issuer
@@ -7,6 +9,8 @@ public class Issuer
     public string Name { get; set; } = null!;
     public string Cnae { get; set; } = null!;
     public Address Address { get; set; } = null!;
+    public RegimeTributario RegimeTributario { get; set; }
+    public SubRegimeTributario SubRegimeTributario { get; set;}
 }
 
 public class Address
@@ -27,6 +31,22 @@ public class Consumer
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public Address Address { get; set; } = null!;
+}
+
+public enum RegimeTributario
+{
+    SimplesNacional = 1,
+    LucroPresumido = 2,
+    LucroReal = 3, 
+    Outro = 4
+}
+
+public enum SubRegimeTributario
+{
+    Nenhum,
+    ME,
+    EPP,
+    MEI,
 }
 
 

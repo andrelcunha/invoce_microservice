@@ -1,4 +1,5 @@
 using InvoiceMicroservice.Domain.Entities;
+using InvoiceMicroservice.Domain.Enums;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Domain.ValueObjects;
 using InvoiceMicroservice.Infrastructure.Xml;
@@ -21,6 +22,7 @@ public record EmitInvoiceData
     public required decimal Amount { get; init; }
     public DateTime IssuedAt { get; init; }
     public string? ServiceTypeKey { get; init; }
+    public string? MunicipalTaxCode { get; init; }
     
     /// <summary>
     /// ISS rate (Imposto Sobre Serviços) as percentage.
@@ -28,6 +30,25 @@ public record EmitInvoiceData
     /// This is the CURRENT tax (separate from IBS/CBS which start in 2026).
     /// </summary>
     public decimal IssRate { get; init; }
+
+    public int? PisConfinsCts { get; init; }
+
+    public decimal AliquotaPis { get; init; }
+    public decimal AliquotaCofins { get; init; }
+
+    public string TipoRetencaoPisCofins 
+    { 
+        get
+        {
+            return PisConfinsCts.HasValue 
+                ? PisConfinsCts.Value.ToString("D2") 
+                : "00";
+        }
+    }
+
+    public string IbsCbsClassTrib { get; init; } = null!;
+
+    public string IbsCbsCst { get; init; } = null!;
 }
 
 public class EmitInvoiceCommandHandler
@@ -52,6 +73,9 @@ public class EmitInvoiceCommandHandler
         
         var issuerJson = JsonSerializer.Serialize(request.Data.Issuer);
         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
+        string ctsPisConfins = request.Data.PisConfinsCts.HasValue 
+            ? request.Data.PisConfinsCts.Value.ToString("D2") 
+            : "00";
 
         var invoice = Invoice.Create(
             request.ClientId,
@@ -62,7 +86,14 @@ public class EmitInvoiceCommandHandler
             request.Data.Amount,
             request.Data.IssuedAt,
             request.Data.IssRate,
-            request.Data.ServiceTypeKey
+            request.Data.MunicipalTaxCode,
+            ctsPisConfins,
+            request.Data.ServiceTypeKey,
+            request.Data.AliquotaPis,
+            request.Data.AliquotaCofins,
+            request.Data.TipoRetencaoPisCofins,
+            request.Data.IbsCbsClassTrib,
+            request.Data.IbsCbsCst
         );
 
         await _repository.AddAsync(invoice, cancellationToken);
