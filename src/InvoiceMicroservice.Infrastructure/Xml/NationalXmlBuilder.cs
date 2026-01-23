@@ -48,16 +48,12 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
         var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes,  serie, numero, isTestMode, cancellationToken);
         root.Add(infDps);
-        XmlDocument xmlDoc = new()
-        {
-            PreserveWhitespace = false,
-        };
-        xmlDoc.LoadXml(root.ToString(SaveOptions.DisableFormatting));
         // sign the XML
-        string signedXml = SignXml(xmlDoc, credentials!.CertificateData!, credentials.CertificatePasswordHash!);
-        // root.Add(XElement.Parse(signedXml));
-        var doc = new XDocument(new XDeclaration("1.0", "utf-8",null), signedXml);
-        var xmlString = doc.Declaration!.ToString() + Environment.NewLine + doc.ToString(SaveOptions.None);
+        string signedXml = SignXml(root.ToString(SaveOptions.DisableFormatting), credentials!.CertificateData!, credentials.CertificatePasswordHash!);
+
+        var doc = XDocument.Parse(signedXml);
+        doc.Declaration = new XDeclaration("1.0", "UTF-8", null);
+        var xmlString = doc.Declaration!.ToString() + Environment.NewLine + doc.ToString(SaveOptions.DisableFormatting);
         return xmlString;
     }
 
@@ -472,7 +468,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return municipality?.IbgeCode ?? "4204301"; // Default to example (Concórdia-SC IBGE)
     }
 
-        private string SignXml(XmlDocument xmlDoc, byte[] certificateData, string certificatePassword)
+        private string SignXml(string xml, byte[] certificateData, string certificatePassword)
     {
         var certificate = X509CertificateLoader.LoadPkcs12(
             certificateData, 
@@ -480,11 +476,11 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
             X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
 
         // Create signed XML
-        // var xmlDoc = new XmlDocument
-        // {
-        //     PreserveWhitespace = false,
-        // };
-        // xmlDoc.LoadXml(xml);
+        var xmlDoc = new XmlDocument
+        {
+            PreserveWhitespace = false,
+        };
+        xmlDoc.LoadXml(xml);
         var signedXml = new SignedXml(xmlDoc)
         {
             SigningKey = certificate.GetRSAPrivateKey()
