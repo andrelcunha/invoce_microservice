@@ -22,6 +22,11 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         _municipalityRepo = municipalityRepo;
     }
 
+    public PortalType GetPortalType()
+    {
+        return PortalType.IPM;
+    }
+
     public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
         var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;

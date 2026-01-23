@@ -21,4 +21,12 @@ public interface IInvoiceXmlBuilderFactory
 public interface IInvoiceXmlBuilder
 {
     Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default);
+
+    PortalType GetPortalType();
+}
+
+public enum PortalType
+{
+    IPM,
+    Nacional
 }

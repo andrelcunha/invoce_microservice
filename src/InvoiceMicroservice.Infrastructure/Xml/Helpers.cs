@@ -4,6 +4,7 @@ using InvoiceMicroservice.Domain.Entities;
 namespace InvoiceMicroservice.Infrastructure.Xml;
 
 internal static class Helpers
+
 {
     internal static string EscapeXmlContent(string content)
     {
@@ -71,7 +72,7 @@ internal static class Helpers
         if (string.IsNullOrEmpty(code))
             return "";
         
-        return code.Replace(".", "").Replace("-", "");
+        return code.Replace(".", "").Replace("-", "").Replace("/", "");
     }
 
     /// <summary>
@@ -82,5 +83,4 @@ internal static class Helpers
     {
         return amount.ToString("F2", CultureInfo.GetCultureInfo("pt-BR"));
     }
-
 }

@@ -8,12 +8,12 @@ namespace InvoiceMicroservice.Infrastructure.Services;
 /// Dummy IPM client that writes XML to files instead of calling the API.
 /// Useful for development and XML validation before connecting to real IPM.
 /// </summary>
-public class FileIpmClient : IIpmClient
+public class FileInvoiceClient : IApiClient
 {
     private readonly string _outputDirectory;
-    private readonly ILogger<FileIpmClient> _logger;
+    private readonly ILogger<FileInvoiceClient> _logger;
 
-    public FileIpmClient(ILogger<FileIpmClient> logger, string? outputDirectory = null)
+    public FileInvoiceClient(ILogger<FileInvoiceClient> logger, string? outputDirectory = null)
     {
         _logger = logger;
         _outputDirectory = outputDirectory ?? Path.Combine(Directory.GetCurrentDirectory(), "ipm-xml-output");
@@ -21,11 +21,12 @@ public class FileIpmClient : IIpmClient
         // Create output directory if it doesn't exist
         Directory.CreateDirectory(_outputDirectory);
         
-        _logger.LogInformation("FileIpmClient initialized. XML files will be saved to: {OutputDirectory}", _outputDirectory);
+        _logger.LogInformation("FileClient initialized. XML files will be saved to: {OutputDirectory}", _outputDirectory);
     }
 
-    public Task<IpmSubmissionResult> SubmitInvoiceAsync(
+    public Task<NfseSubmissionResult> SubmitInvoiceAsync(
         string xml, 
+        string issuerCnpj,
         bool isTestMode = true, 
         CancellationToken cancellationToken = default)
     {
@@ -51,7 +52,7 @@ public class FileIpmClient : IIpmClient
                 isTestMode);
             
             // Simulate successful response
-            var result = new IpmSubmissionResult
+            var result = new NfseSubmissionResult
             {
                 Success = true,
                 Protocol = $"DUMMY-{identifier[..8]}",
@@ -73,30 +74,30 @@ public class FileIpmClient : IIpmClient
         {
             _logger.LogError(ex, "Failed to save NFS-e XML to file");
             
-            var errorResult = new IpmSubmissionResult
+            var errorResult = new NfseSubmissionResult
             {
                 Success = false,
-                Messages = new List<string> { $"File write error: {ex.Message}" }
+                Messages = [$"File write error: {ex.Message}"]
             };
             
             return Task.FromResult(errorResult);
         }
     }
 
-    public Task<IpmQueryResult> QueryInvoiceAsync(
+    public Task<InvoiceQueryResult> QueryInvoiceAsync(
         string protocol, 
         CancellationToken cancellationToken = default)
     {
         _logger.LogWarning("QueryInvoiceAsync called on dummy implementation. Protocol: {Protocol}", protocol);
         
-        return Task.FromResult(new IpmQueryResult
+        return Task.FromResult(new InvoiceQueryResult
         {
             Found = false,
             // Messages = new List<string> { "Dummy implementation - query not available" }
         });
     }
 
-    public Task<IpmCancellationResult> CancelInvoiceAsync(
+    public Task<InvoiceCancellationResult> CancelInvoiceAsync(
         string invoiceNumber, 
         string cancellationReason, 
         CancellationToken cancellationToken = default)
@@ -106,7 +107,7 @@ public class FileIpmClient : IIpmClient
             invoiceNumber, 
             cancellationReason);
         
-        return Task.FromResult(new IpmCancellationResult
+        return Task.FromResult(new InvoiceCancellationResult
         {
             Success = false,
             Messages = new List<string> { "Dummy implementation - cancellation not available" }

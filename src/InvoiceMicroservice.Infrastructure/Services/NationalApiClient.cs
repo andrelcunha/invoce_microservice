@@ -1,8 +1,10 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Cryptography.Xml;
 using System.Text;
+using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 using InvoiceMicroservice.Domain.Entities;
@@ -15,18 +17,18 @@ namespace InvoiceMicroservice.Infrastructure.Services;
 /// Real IPM NFSe API client.
 /// Implements multipart/form-data transport, Basic Auth, cookie management, and XML signature.
 /// </summary>
-public class IpmApiClient : IApiClient
+public class NationalApiClient : IApiClient
 {
     private readonly HttpClient _httpClient;
-    private readonly ILogger<IpmApiClient> _logger;
+    private readonly ILogger<NationalApiClient> _logger;
     private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly ApiClientOptions _options;
 
     private readonly CookieContainer _cookieContainer;
 
-    public IpmApiClient(
+    public NationalApiClient(
         HttpClient httpClient,
-        ILogger<IpmApiClient> logger,
+        ILogger<NationalApiClient> logger,
         ApiClientOptions options,
         IPortalCredentialsRepository credentialsRepo)
     {
@@ -35,7 +37,6 @@ public class IpmApiClient : IApiClient
         _logger = logger;
         _credentialsRepo = credentialsRepo;
         _cookieContainer = new CookieContainer();
-
     }
 
     private void ConfigureHttpClient(PortalCredentials credentials)
@@ -57,7 +58,6 @@ public class IpmApiClient : IApiClient
         var attempt = 0;
         Exception? lastException = null;
 
-        // string? issuerCnpj = GetIssuerCnpjFromXml(xml);
         if (string.IsNullOrEmpty(issuerCnpj))
         {
             return new NfseSubmissionResult
@@ -91,16 +91,28 @@ public class IpmApiClient : IApiClient
                     _options.RetryAttempts,
                     isTestMode);
 
-                // Sign XML if required
-                var finalXml = credentials.RequiresSignature
-                    ? SignXml(xml, credentials.CertificateData!, credentials.CertificatePasswordHash!)
-                    : xml;
+                // Compress
+                var dpsXmlGZipB64 = CompressXmlToBase64(xml);
+                var json =  JsonSerializer.Serialize(new { dpsXmlGZipB64 = dpsXmlGZipB64 });
 
+
+                if (isTestMode)
+                {
+                    // saving dpsXmlGZipB64 to file for debugging
+                    var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "ipm-xml-output");
+                    Directory.CreateDirectory(outputDirectory);
+                    await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"dpsXmlGZipB64-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.txt"), dpsXmlGZipB64);
+                    await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"finalXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml"), xml);
+                    return new NfseSubmissionResult
+                    {
+                        Success = false,
+                        Messages = [$"API client GZIP + Base64 encoding demo mode - not sending request."]
+                    };
+                }
                 // Build multipart/form-data request
-                using var content = new MultipartFormDataContent();
-                var xmlContent = new ByteArrayContent(Encoding.UTF8.GetBytes(finalXml));
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var xmlContent = new ByteArrayContent(Encoding.UTF8.GetBytes(xml));
                 xmlContent.Headers.ContentType = new MediaTypeHeaderValue("text/xml");
-                content.Add(xmlContent, "xml", "invoice.xml");
 
                 // Include cookies from previous session
                 var baseUrl = credentials.ApiBaseUrl;
@@ -119,7 +131,7 @@ public class IpmApiClient : IApiClient
                 // Read response body
                 var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
 
-                _logger.LogDebug("IPM response (HTTP {StatusCode}): {ResponseXml}",
+                _logger.LogDebug("National API response (HTTP {StatusCode}): {ResponseXml}",
                     (int)response.StatusCode,
                     responseXml);
 
@@ -131,7 +143,7 @@ public class IpmApiClient : IApiClient
                 lastException = ex;
                 _logger.LogWarning(
                     ex,
-                    "IPM request timeout (attempt {Attempt}/{MaxAttempts})",
+                    "National API request timeout (attempt {Attempt}/{MaxAttempts})",
                     attempt,
                     _options.RetryAttempts);
 
@@ -146,7 +158,7 @@ public class IpmApiClient : IApiClient
                 lastException = ex;
                 _logger.LogWarning(
                     ex,
-                    "IPM request failed (attempt {Attempt}/{MaxAttempts})",
+                    "National API request failed (attempt {Attempt}/{MaxAttempts})",
                     attempt,
                     _options.RetryAttempts);
 
@@ -161,7 +173,7 @@ public class IpmApiClient : IApiClient
                 lastException = ex;
                 _logger.LogError(
                     ex,
-                    "Unexpected error submitting invoice to IPM (attempt {Attempt}/{MaxAttempts})",
+                    "Unexpected error submitting invoice to National API (attempt {Attempt}/{MaxAttempts})",
                     attempt,
                     _options.RetryAttempts);
 
@@ -192,12 +204,12 @@ public class IpmApiClient : IApiClient
         string protocol,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogWarning("QueryInvoiceAsync not implemented for IPM API. Protocol: {Protocol}", protocol);
+        _logger.LogWarning("QueryInvoiceAsync not implemented for National API. Protocol: {Protocol}", protocol);
 
         return await Task.FromResult(new InvoiceQueryResult
         {
             Found = false,
-            Status = "Query operation not available in current IPM API implementation"
+            Status = "Query operation not available in current National API implementation"
         });
     }
 
@@ -207,55 +219,15 @@ public class IpmApiClient : IApiClient
         CancellationToken cancellationToken = default)
     {
         _logger.LogWarning(
-            "CancelInvoiceAsync not implemented for IPM API. Invoice: {InvoiceNumber}, Reason: {Reason}",
+            "CancelInvoiceAsync not implemented for National API. Invoice: {InvoiceNumber}, Reason: {Reason}",
             invoiceNumber,
             cancellationReason);
 
         return await Task.FromResult(new InvoiceCancellationResult
         {
             Success = false,
-            Messages = new List<string> { "Cancellation operation not available in current IPM API implementation" }
+            Messages = new List<string> { "Cancellation operation not available in current National API implementation" }
         });
-    }
-
-    private string SignXml(string xml, byte[] certificateData, string certificatePassword)
-    {
-        var certificate = X509CertificateLoader.LoadPkcs12(
-            certificateData, 
-            certificatePassword, 
-            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
-
-        // Load XML document
-        var xmlDoc = new XmlDocument { PreserveWhitespace = true };
-        xmlDoc.LoadXml(xml);
-
-        // Create signed XML
-        var signedXml = new SignedXml(xmlDoc)
-        {
-            SigningKey = certificate.GetRSAPrivateKey()
-        };
-
-        // Reference the entire document
-        var reference = new Reference { Uri = "" };
-        reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
-        reference.AddTransform(new XmlDsigC14NTransform());
-        signedXml.AddReference(reference);
-
-        // Add key info
-        var keyInfo = new KeyInfo();
-        keyInfo.AddClause(new KeyInfoX509Data(certificate));
-        signedXml.KeyInfo = keyInfo;
-
-        // Compute signature
-        signedXml.ComputeSignature();
-
-        // Append signature to XML
-        var signatureElement = signedXml.GetXml();
-        xmlDoc.DocumentElement?.AppendChild(xmlDoc.ImportNode(signatureElement, true));
-
-        _logger.LogDebug("XML signed successfully using certificate: {Thumbprint}", certificate.Thumbprint);
-
-        return xmlDoc.OuterXml; 
     }
 
     private NfseSubmissionResult ParseResponse(string responseXml)
@@ -270,7 +242,7 @@ public class IpmApiClient : IApiClient
                 return new NfseSubmissionResult
                 {
                     Success = false,
-                    Messages = new List<string> { "Empty response from IPM" },
+                    Messages = new List<string> { "Empty response from National API" },
                     RawResponse = responseXml
                 };
             }
@@ -312,14 +284,14 @@ public class IpmApiClient : IApiClient
             if (success)
             {
                 _logger.LogInformation(
-                    "IPM submission successful. Invoice: {InvoiceNumber}, Verification: {VerificationCode}",
+                    "National API submission successful. Invoice: {InvoiceNumber}, Verification: {VerificationCode}",
                     numeroNfse,
                     codVerificador);
             }
             else
             {
                 _logger.LogWarning(
-                    "IPM submission failed. Messages: {Messages}",
+                    "National API submission failed. Messages: {Messages}",
                     string.Join("; ", messages));
             }
 
@@ -327,7 +299,7 @@ public class IpmApiClient : IApiClient
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to parse IPM response: {ResponseXml}", responseXml);
+            _logger.LogError(ex, "Failed to parse National API response: {ResponseXml}", responseXml);
 
             return new NfseSubmissionResult
             {
@@ -360,5 +332,36 @@ public class IpmApiClient : IApiClient
                 _logger.LogDebug("Captured cookie: {SetCookieHeader}", header);
             }
         }
+    }
+
+        /// <summary>
+    /// Compacta uma string XML em GZIP e retorna os bytes.
+    /// </summary>
+    public static byte[] CompressToGzip(string xml) 
+    { 
+        byte[] xmlBytes = Encoding.UTF8.GetBytes(xml);
+        using var outputStream = new MemoryStream();
+        using (var gzipStream = new GZipStream(outputStream, CompressionMode.Compress))
+        {
+            gzipStream.Write(xmlBytes, 0, xmlBytes.Length);
+        }
+        return outputStream.ToArray();
+    }
+
+        /// <summary>
+    /// Converte bytes GZIP para base64.
+    /// </summary>
+    public static string ToBase64(byte[] gzipBytes)
+    {
+        return Convert.ToBase64String(gzipBytes);
+    }
+
+    /// <summary>
+    /// Compacta uma string XML em GZIP e retorna a string base64.
+    /// </summary>
+    public static string CompressXmlToBase64(string xml)
+    { 
+        var gzipBytes = CompressToGzip(xml);
+        return ToBase64(gzipBytes);
     }
 }

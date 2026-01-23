@@ -1,29 +1,31 @@
 namespace InvoiceMicroservice.Domain.Interfaces;
 /// <summary>
-/// Client for interacting with IPM Emissor Nacional API.
+/// Client for interacting with Emissor Nacional API.
 /// Handles NFS-e submission, query, and cancellation operations.
 /// </summary>
-public interface IIpmClient
+public interface INationalApiClient
 {
     /// <summary>
-    /// Submits an NFS-e XML to IPM for emission.
+    /// Submits an NFS-e XMLto the appropriate portal based on issuer's credentials.
     /// </summary>
-    /// <param name="xml">Complete NFS-e XML document</param>
+    /// <param name="xml">Complete NFS-e XML document  (National or Nacional format)</param>
+    /// <param name="issuerCnpj">Issuer CNPJ to lookup portal credentials</param>
     /// <param name="isTestMode">Whether to use test environment (default: true)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Response containing protocol number, PDF URL, and validation messages</returns>
-    Task<IpmSubmissionResult> SubmitInvoiceAsync(
-        string xml, 
+    Task<NationalSubmissionResult> SubmitInvoiceAsync(
+        string xml,
+        string issuerCnpj,
         bool isTestMode = true, 
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Queries the status of a previously submitted NFS-e.
     /// </summary>
-    /// <param name="protocol">IPM protocol number from submission</param>
+    /// <param name="protocol">National protocol number from submission</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Current status and invoice details</returns>
-    Task<IpmQueryResult> QueryInvoiceAsync(
+    Task<InvoiceQueryResult> QueryInvoiceAsync(
         string protocol, 
         CancellationToken cancellationToken = default);
 
@@ -34,16 +36,16 @@ public interface IIpmClient
     /// <param name="cancellationReason">Reason for cancellation</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Cancellation confirmation</returns>
-    Task<IpmCancellationResult> CancelInvoiceAsync(
+    Task<InvoiceCancellationResult> CancelInvoiceAsync(
         string invoiceNumber, 
         string cancellationReason, 
         CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Result of NFS-e submission to IPM.
+/// Result of NFS-e submission to IPM or Nacional portal.
 /// </summary>
-public record IpmSubmissionResult
+public record NationalSubmissionResult
 {
     /// <summary>
     /// Whether submission was successful.
@@ -51,7 +53,7 @@ public record IpmSubmissionResult
     public bool Success { get; init; }
 
     /// <summary>
-    /// IPM protocol number for tracking.
+    /// IPM or Nacional protocol number for tracking.
     /// </summary>
     public string? Protocol { get; init; }
 
@@ -76,7 +78,7 @@ public record IpmSubmissionResult
     public List<string> Messages { get; init; } = new();
 
     /// <summary>
-    /// Raw XML/JSON response from IPM (for audit).
+    /// Raw XML/JSON response from IPM or Nacional portal (for audit).
     /// </summary>
     public string? RawResponse { get; init; }
 }
@@ -84,7 +86,7 @@ public record IpmSubmissionResult
 /// <summary>
 /// Result of invoice status query.
 /// </summary>
-public record IpmQueryResult
+public record NationalInvoiceQueryResult
 {
     public bool Found { get; init; }
     public string? Status { get; init; }
@@ -96,7 +98,7 @@ public record IpmQueryResult
 /// <summary>
 /// Result of invoice cancellation.
 /// </summary>
-public record IpmCancellationResult
+public record NationalInvoiceCancellationResult
 {
     public bool Success { get; init; }
     public string? CancellationProtocol { get; init; }

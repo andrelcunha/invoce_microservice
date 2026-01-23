@@ -54,17 +54,18 @@ public record EmitInvoiceData
 public class EmitInvoiceCommandHandler
 {
     private readonly IInvoiceRepository _repository;
-    private readonly IInvoiceXmlBuilder _xmlBuilder;
-    private readonly IIpmClient _ipmClient;
+    private readonly IInvoiceXmlBuilderFactory _xmlBuilderFactory;
+    private readonly IApiClient _apiClient;
+    
 
     public EmitInvoiceCommandHandler(
         IInvoiceRepository repository, 
-        IInvoiceXmlBuilder xmlBuilder,
-        IIpmClient ipmClient)
+        IInvoiceXmlBuilderFactory xmlBuilderFactory,
+            IApiClient apiClient)
     {
         _repository = repository;
-        _xmlBuilder = xmlBuilder;
-        _ipmClient = ipmClient;
+        _xmlBuilderFactory = xmlBuilderFactory;
+        _apiClient = apiClient;
     }
 
     public async Task<Guid> HandleAsync(EmitInvoiceCommand request, CancellationToken cancellationToken = default)
@@ -73,6 +74,7 @@ public class EmitInvoiceCommandHandler
         
         var issuerJson = JsonSerializer.Serialize(request.Data.Issuer);
         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
+
         string ctsPisConfins = request.Data.PisConfinsCts.HasValue 
             ? request.Data.PisConfinsCts.Value.ToString("D2") 
             : "00";
@@ -98,6 +100,11 @@ public class EmitInvoiceCommandHandler
 
         await _repository.AddAsync(invoice, cancellationToken);
 
+        // Factory selects IPM or Nacional builder based on issuer CNPJ
+        var _xmlBuilder = await _xmlBuilderFactory.GetBuilderAsync(
+            issuerCnpj.Value, 
+            cancellationToken);
+
         // Generate XML
         var xml = await _xmlBuilder.BuildInvoiceXmlAsync(
             invoice, 
@@ -108,8 +115,9 @@ public class EmitInvoiceCommandHandler
         invoice.XmlPayload = xml;
         
         // Submit to IPM (File or API depending on configuration)
-        var result = await _ipmClient.SubmitInvoiceAsync(
-            xml, 
+        var result = await _apiClient.SubmitInvoiceAsync(
+            xml,
+            issuerCnpj.Value,
             isTestMode: request.IsTestMode, 
             cancellationToken);
         

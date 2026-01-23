@@ -1,80 +1,67 @@
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.Xml;
 using System.Text.Json;
+using System.Xml;
 using System.Xml.Linq;
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace InvoiceMicroservice.Infrastructure.Xml;
 
 public class NationalXmlBuilder : IInvoiceXmlBuilder
 {
-    private readonly TaxConfig _taxConfig;
     private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;
     private readonly IMunicipalityRepository _municipalityRepo;
+    private readonly IPortalCredentialsRepository _credentialsRepo;
+    private readonly ILogger<NationalXmlBuilder> _logger;
+
 
     public NationalXmlBuilder(
-        TaxConfig taxConfig, 
         IServiceTypeTaxMappingRepository serviceTaxRepo,
-        IMunicipalityRepository municipalityRepo)
+        IMunicipalityRepository municipalityRepo,
+        IPortalCredentialsRepository credentialsRepo,
+        ILogger<NationalXmlBuilder> logger)
     {
-        _taxConfig = taxConfig;
         _serviceTaxRepo = serviceTaxRepo;
         _municipalityRepo = municipalityRepo;
+        _credentialsRepo = credentialsRepo;
+        _logger = logger;
     }
+
+    public PortalType GetPortalType() => PortalType.Nacional;
 
     public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
         var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;
+        _logger.LogInformation("Building XML for invoice {InvoiceId} issued by {IssuerCnpj}", invoice.Id, issuer.Cnpj);
         var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
+        var issuer_cnpj = Helpers.StripDots(issuer.Cnpj);
+        var credentials = await _credentialsRepo.GetByIssuerCnpjAsync(issuer_cnpj, cancellationToken);
+        if (credentials == null)
+            throw new InvalidOperationException($"No portal credentials found for issuer CNPJ {issuer_cnpj}");
 
-        // Lookup service type codes - fallback to defaults if not found
-        var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
-
-        // var root = new XElement("EnviarLoteRpsEnvio",
-        //     new XAttribute("xmlns", "http://www.abrasf.org.br/nfse.xsd"));
-
-        // var loteRps = new XElement("LoteRps",
-        //     new XAttribute("Id", $"lote_{Guid.NewGuid():N}")); // Unique batch ID
-
-        // // Batch details
-        // loteRps.Add(new XElement("NumeroLote", invoice.Id)); // Use invoice ID as batch number for simplicity
-        // loteRps.Add(new XElement("Cnpj", Helpers.OnlyDigits(issuer.Cnpj)));
-        // loteRps.Add(new XElement("InscricaoMunicipal", issuer.MunicipalInscription));
-        // loteRps.Add(new XElement("QuantidadeRps", 1)); // Single RPS for MVP
-
-        // var listaRps = new XElement("ListaRps");
-        // var rps = new XElement("Rps");
-        // var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes, isTestMode, cancellationToken);
-        // rps.Add(infDps);
-        // listaRps.Add(rps);
-        // loteRps.Add(listaRps);
-
-        // root.Add(loteRps);
-        var root = new XElement("Nfse",
-            new XAttribute("xmlns", "http://www.abrasf.org.br/nfse.xsd"));
-
-        var doc = new XDocument(new XDeclaration("1.0", "UTF-8", null), root);
-        return doc.ToString(SaveOptions.DisableFormatting);
-    }
-
-    private async Task<XElement> BuildDpsAsync(Invoice invoice,  bool isTestMode, CancellationToken cancellationToken = default)
-    {
+        var root = new XElement("DPS", new XAttribute("versao", "2.0"));
         int serie = 1; // Hardcoded for MVP
         int numero = 1; // Hardcoded for MVP TODO: Find a way to get real series/number
-        var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;
-        string codMun = await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
-        var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
-
-        // Lookup service type codes - fallback to defaults if not found
         var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
-        var dps = new XElement("DPS");
-        dps.Add(new XElement("versao", "1.00")); // TODO: confiirmar versão correta
-        dps.Add(await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes, codMun, serie, numero, isTestMode, cancellationToken));
-        return dps;
+        var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes,  serie, numero, isTestMode, cancellationToken);
+        root.Add(infDps);
+        XmlDocument xmlDoc = new()
+        {
+            PreserveWhitespace = false,
+        };
+        xmlDoc.LoadXml(root.ToString(SaveOptions.DisableFormatting));
+        // sign the XML
+        string signedXml = SignXml(xmlDoc, credentials!.CertificateData!, credentials.CertificatePasswordHash!);
+        // root.Add(XElement.Parse(signedXml));
+        var doc = new XDocument(new XDeclaration("1.0", "utf-8",null), signedXml);
+        var xmlString = doc.Declaration!.ToString() + Environment.NewLine + doc.ToString(SaveOptions.None);
+        return xmlString;
     }
 
-
-    private string BuildDpsId(Invoice invoice, Issuer issuer,  string codMun, int serie, int numero)
+    private string BuildDpsId(string cnpj,  string codMun, int serie, int numero)
     {
         // A formação do identificador da DPS
         var builder = new System.Text.StringBuilder();
@@ -82,9 +69,9 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // cod. municipal (7)
         builder.Append(codMun.PadLeft(7, '0'));
         // Tipo de inscrição federal (1) // 1=CPF, 2=CNPJ
-        builder.Append(issuer.Cnpj.Length == 11 ? "1" : "2");
+        builder.Append(cnpj.Length == 11 ? "1" : "2");
         // inscrição federal (14)  Se for CPF completar com 000 à esquerda
-        builder.Append(Helpers.OnlyDigits(issuer.Cnpj).PadLeft(14, '0'));
+        builder.Append(Helpers.OnlyDigits(cnpj).PadLeft(14, '0'));
         // Serie (5)
         builder.Append(serie.ToString().PadRight(5, '0'));
         // Número da DPS (15)
@@ -92,12 +79,15 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return builder.ToString();
     }
 
-    private async Task<XElement> BuildInfDpsAsync(Invoice invoice, Issuer issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, string codMun, int serie, int numero, bool isTestMode, CancellationToken ct)
+    private async Task<XElement> BuildInfDpsAsync(Invoice invoice, Issuer issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
-        var infDps = new XElement("infDps");
-        infDps.Add(new XElement("Id", BuildDpsId(invoice, issuer, codMun, serie, numero))); // Serie and Numero hardcoded for MVP
+        var codMun = await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct);
+        var codMunToma = await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct);
+
+        var id = BuildDpsId(issuer.Cnpj, codMun, serie, numero); 
+        var infDps = new XElement("infDPS", new XAttribute("Id", id));
         // tpAmp - Tipo de Ambiente (1=Produção, 2=Homologação)
-        infDps.Add(new XElement("tpAmb", isTestMode ? "2" : "1"));
+        infDps.Add(new XElement("tpAmb", isTestMode ? "2" : "1")); // 1 - Produção, 2 - Homologação
         // dhEmi - Data e Hora de Emissão (ISO 8601)
         infDps.Add(new XElement("dhEmi", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")));
         // verAplic - Versão do Aplicativo
@@ -106,7 +96,6 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         infDps.Add(new XElement("serie", serie));
         // numero
         infDps.Add(new XElement("nDPS", numero));
-        // dCompet - Data de Competência (ISO 8601) YYYY-MM-DD
         infDps.Add(new XElement("dCompet", invoice.IssuedAt?.ToString("yyyy-MM-dd") ?? DateTime.UtcNow.ToString("yyyy-MM-dd")));
         //  tpEmit - Emitente da DPS (1=Prestador de Serviço, 2=Tomador de Serviço, 3=Intermediário)
         infDps.Add(new XElement("tpEmit", "1")); // Always Prestador 
@@ -114,19 +103,17 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // chNFSeRej - Chave da NFS-e rejeitada
         // cLocEmi - Código do Local de Emissão (7) Código IBGE
         infDps.Add(new XElement("cLocEmi", codMun));
-        // grupo 'subst'
-        infDps.Add(BuildDpsPrest(issuer));
-        // grupo 'toma'
-        infDps.Add(BuildDpsToma(consumer));
+        // grupo 'subst' -- não se aplica
+        infDps.Add(BuildDpsPrest(issuer, codMun));
+        infDps.Add(BuildDpsToma(consumer, codMunToma));
         // grupo 'interm' -- não se aplica
-        // grupo 'serv'
-        infDps.Add(await BuildServicoAsync(invoice, issuer, serviceCodes, ct));
+        infDps.Add(await BuildServAsync(invoice, issuer, serviceCodes, ct));
         infDps.Add(BuildValoresAsync(invoice));
-        infDps.Add(await BuildIbsCbsAsync(invoice, serviceCodes, ct));
+        infDps.Add(await BuildIbsCbsAsync(invoice, issuer, consumer, serviceCodes, ct));
         return infDps;
     }
 
-    private XElement BuildDpsPrest(Issuer issuer)
+    private XElement BuildDpsPrest(Issuer issuer, string codMun)
     {
         var prest = new XElement("prest");
         if (issuer.Cnpj.Length == 11)
@@ -136,10 +123,9 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // NIF --  não preenchido se tpEmit = 1
         // cNaoNIF --  não preenchido se tpEmit = 1
         // CAEPF -- não preenchido se tpEmit = 1
-        prest.Add(new XElement("IM", issuer.MunicipalInscription));
+        // prest.Add(new XElement("IM", issuer.MunicipalInscription));
         prest.Add(new XElement("xNome", Helpers.EscapeXmlContent(issuer.Name)));
-        XElement end = BuildEndElement(issuer.Address);
-        prest.Add(end);
+        prest.Add(BuildEndElement(issuer.Address, codMun));
         prest.Add(new XElement("fone", Helpers.OnlyDigits("")));
         prest.Add(new XElement("email", Helpers.EscapeXmlContent("")));
 
@@ -157,16 +143,19 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return prest;
     }
 
-    private static XElement BuildEndElement(Address address)
+    private static XElement BuildEndElement(Address address, string codMun)
     {
         var end = new XElement("end");
         var endNac = new XElement("endNac");
-        endNac.Add(new XElement("cMun", "")); // deixar vazio no prestador
+        endNac.Add(new XElement("cMun", codMun)); // To be filled with IBGE code
         endNac.Add(new XElement("CEP", Helpers.OnlyDigits(address.ZipCode)));
         end.Add(endNac);
         end.Add(new XElement("xLgr", Helpers.EscapeXmlContent(address.Street)));
         end.Add(new XElement("nro", address.Number));
-        end.Add(new XElement("xCpl", Helpers.EscapeXmlContent(address.Complement ?? "")));
+        if (string.IsNullOrEmpty(address.Complement) == false)
+        {
+            end.Add(new XElement("xCpl", Helpers.EscapeXmlContent(address.Complement ?? "")));
+        }
         end.Add(new XElement("xBairro", Helpers.EscapeXmlContent(address.Neighborhood)));
         // endExt -- omitido no prestador nacional
         return end;
@@ -216,7 +205,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // 3 - Regime de apuração dos tributos federais e municipais pela NFS-e conforme legislação municipal.
         return 1; // Example value
     }
-    private XElement BuildDpsToma(Consumer consumer)
+    private XElement BuildDpsToma(Consumer consumer, string codMun)
     {
         var tom = new XElement("toma");
         if (consumer.CpfCnpj.Length == 11)
@@ -226,65 +215,19 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // NIF -- omitido se tpEmit = 1
         // cNaoNIF -- omitido se tpEmit = 1
         tom.Add(new XElement("xNome", Helpers.EscapeXmlContent(consumer.Name)));
-        var end = BuildEndElement(consumer.Address);
+        var end = BuildEndElement(consumer.Address, codMun);
         tom.Add(end);
         tom.Add(new XElement("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
         tom.Add(new XElement("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
         return tom;
     }
 
-    private async Task<XElement> BuildEmitterXmlAsync(Invoice invoice, CancellationToken cancellationToken = default)
-    {
-        var emit = new XElement("emit");
-        var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;
-        emit.Add(new XElement("CNPJ", Helpers.OnlyDigits(issuer.Cnpj)));
-        emit.Add(new XElement("IM", issuer.MunicipalInscription));
-        emit.Add(new XElement("xNome", Helpers.EscapeXmlContent(issuer.Name)));
-        // emit.Add(new XElement("xFant", Helpers.EscapeXmlContent(issuer.FantasyName ?? "")));
-        emit.Add(new XElement("xFant",  ""));
-
-        var enderNac = new XElement("enderNac");
-        enderNac.Add(new XElement("xLgr", Helpers.EscapeXmlContent(issuer.Address.Street)));
-        enderNac.Add(new XElement("nro", issuer.Address.Number));
-        enderNac.Add(new XElement("xCpl", Helpers.EscapeXmlContent(issuer.Address.Complement ?? "")));
-        enderNac.Add(new XElement("xBairro", Helpers.EscapeXmlContent(issuer.Address.Neighborhood)));
-        enderNac.Add(new XElement("cMun",await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken)));
-        enderNac.Add(new XElement("UF", issuer.Address.Uf));
-        enderNac.Add(new XElement("CEP", Helpers.OnlyDigits(issuer.Address.ZipCode)));
-        emit.Add(enderNac);
-        emit.Add(new XElement("fone", Helpers.OnlyDigits("")));
-        emit.Add(new XElement("email", Helpers.EscapeXmlContent("")));
-
-        return emit;
-    }
-
-    private XElement BuildValoresAsync(Invoice invoice, decimal pisRetido, decimal cofinsRetido)
-    {
-        var valores = new XElement("valores");
-
-        valores.Add(new XElement("vCalcDR", Helpers.FormatMonetary(0))); // Deductions
-        // valores.Add(new XElement("tpBM", Helpers.FormatMonetary(invoice.Amount))); 
-        // valores.Add(new XElement("vCalcBM", Helpers.FormatMonetary(invoice.Amount)));
-        valores.Add(new XElement("vBC", Helpers.FormatMonetary(invoice.Amount)));
-        valores.Add(new XElement("pAliqAplic", Helpers.FormatRate(invoice.IssRate)));
-        var issRetido = invoice.Amount * invoice.IssRate;
-        valores.Add(new XElement("vISSQN", Helpers.FormatMonetary(issRetido)));
-        valores.Add(new XElement("vTotalRet", Helpers.FormatMonetary(issRetido + pisRetido + cofinsRetido))); // adicionar PIS e COFINS se houver
-        valores.Add(new XElement("vLiq", Helpers.FormatMonetary(invoice.Amount - issRetido)));
-
-
-        return valores;
-    }
-
-
-
-    private async Task<XElement> BuildServicoAsync(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes, CancellationToken ct)
+    private async Task<XElement> BuildServAsync(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
         var servico = new XElement("serv");
 
         var locPrest = new XElement("locPrest");
         locPrest.Add(new XElement("cLocPrestacao", await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct)));
-        locPrest.Add(new XElement("cPaisPrestacao", "1058")); // Brazil);
         servico.Add(locPrest);
 
         var cServ = new XElement("cServ");
@@ -295,8 +238,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // xDescServ
         cServ.Add(new XElement("xDescServ", codes.Description));
         // cNBS
-        // cIntContrib - Código interno do contribuinte (id no Sistema Interno do Contribuinte)
-        cServ.Add(new XElement("cIntContrib", invoice.Id.ToString()));
+        cServ.Add(new XElement("cNBS", codes.NbsCode));
+        // cServ.Add(new XElement("cIntContrib", invoice.Id.ToString()));  // cIntContrib - Código interno do contribuinte (id no Sistema Interno do Contribuinte)
         servico.Add(cServ);
         // grupo 'comExt' (comércio exterior) -- omitido para nacional
         // grupo 'obra' (obras de construção civil)
@@ -311,24 +254,28 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // grupo valores
         var valores = new XElement("valores");
         var vServPrest = new XElement("vServPrest");
-        vServPrest.Add(new XElement("vReceb", Helpers.FormatMonetary(invoice.Amount)));
+        var temIntermediario = false; // Hardcoded for MVP
+        if (temIntermediario)
+        {
+            vServPrest.Add(new XElement("vReceb", Helpers.FormatMonetary(invoice.Amount))); // valor recebido pelo intermediário  
+        }
         vServPrest.Add(new XElement("vServ", Helpers.FormatMonetary(invoice.Amount)));
         valores.Add(vServPrest);
 
-        var vDescCondIncond = new XElement("vDescCondIncond");
-        vDescCondIncond.Add(new XElement("vDescIncond", Helpers.FormatMonetary(0))); // No unconditional discount
-        vDescCondIncond.Add(new XElement("vDescCond", Helpers.FormatMonetary(0))); // No conditional discount
-        valores.Add(vDescCondIncond);
+        // var vDescCondIncond = new XElement("vDescCondIncond");
+        // vDescCondIncond.Add(new XElement("vDescIncond", Helpers.FormatMonetary(0))); // No unconditional discount
+        // vDescCondIncond.Add(new XElement("vDescCond", Helpers.FormatMonetary(0))); // No conditional discount
+        // valores.Add(vDescCondIncond);
 
         // var vDedRed = new XElement("vDedRed");
-        // vDedRed.Add(new XElement("vDed", Helpers.FormatMonetary(0)));
-        // vDedRed.Add(new XElement("vRed", Helpers.FormatMonetary(0)));
-        // valores.Add(vDedRed);
         var trib = new XElement("trib");
         var tribMun = new XElement("tribMun");
-        tribMun.Add(new XElement("tribISSQN", "1")); // 1 = Tributável, 2 = Imunidade, 3 - Exportação, 4 - Não Incidência
-        tribMun.Add(new XElement("tpRetISSQN", "1")); // 1 = Não Retido, 2 = Retido pelo tomador 3 = Retido pelo intermediário
-        tribMun.Add(new XElement("pAliq", Helpers.FormatRate(invoice.IssRate)));
+        var tribISSQN = invoice.IssRate > 0 ? 2 : 1;
+        tribMun.Add(new XElement("tribISSQN", tribISSQN)); // 1 = Tributável, 2 = Imunidade, 3 - Exportação, 4 - Não Incidência
+        var tpRetISSQN = tribISSQN == 1 ? invoice.IssRate > 0 ? 2 : 1 : 1;
+        tribMun.Add(new XElement("tpRetISSQN", tpRetISSQN)); // 1 = Não Retido, 2 = Retido pelo tomador 3 = Retido pelo intermediário
+        if (tribISSQN == 1)
+            tribMun.Add(new XElement("pAliq", Helpers.FormatRate(invoice.IssRate)));
         trib.Add(tribMun);
 
         var tribFed = new XElement("tribFed");
@@ -360,47 +307,47 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return valores;
     }
 
-    private async Task<XElement> BuildTomadorAsync(Consumer consumer, CancellationToken cancellationToken)
-    {
-        var dest = new XElement("dest");
+    // private async Task<XElement> BuildTomadorAsync(Consumer consumer, CancellationToken cancellationToken)
+    // {
+    //     var dest = new XElement("dest");
 
-        if (consumer.CpfCnpj.Length == 11)
-            dest.Add(new XElement("CPF", Helpers.OnlyDigits(consumer.CpfCnpj)));
-        else
-            dest.Add(new XElement("CNPJ", Helpers.OnlyDigits(consumer.CpfCnpj)));
+    //     if (consumer.CpfCnpj.Length == 11)
+    //         dest.Add(new XElement("CPF", Helpers.OnlyDigits(consumer.CpfCnpj)));
+    //     else
+    //         dest.Add(new XElement("CNPJ", Helpers.OnlyDigits(consumer.CpfCnpj)));
 
-        // NIF for foreign entities
-        dest.Add(new XElement("cNaoNIF", "0")); // 0 = Não informado ; 1 = Dispensado; 2 = Não exigência do NIF
+    //     // NIF for foreign entities
+    //     dest.Add(new XElement("cNaoNIF", "0")); // 0 = Não informado ; 1 = Dispensado; 2 = Não exigência do NIF
 
-        dest.Add(new XElement("xNome", Helpers.EscapeXmlContent(consumer.Name)));
+    //     dest.Add(new XElement("xNome", Helpers.EscapeXmlContent(consumer.Name)));
 
-        var endereco = new XElement("end");
+    //     var endereco = new XElement("end");
 
-        var endNac = new XElement("endNac");
-        endNac.Add(new XElement("cMun", await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken)));
-        endNac.Add(new XElement("CEP", Helpers.OnlyDigits(consumer.Address.ZipCode)));
+    //     var endNac = new XElement("endNac");
+    //     endNac.Add(new XElement("cMun", await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken)));
+    //     endNac.Add(new XElement("CEP", Helpers.OnlyDigits(consumer.Address.ZipCode)));
 
-        // var endExt = new XElement("endExt");   // Omit for national
-        // endExt.Add(new XElement("cPais", "1058")); // Brazil
-        // endExt.Add(new XElement("cEndPost", "0")); // Not applicable
-        // endExt.Add(new XElement("xCidade", ""));
-        // endExt.Add(new XElement("xEstProvReg", ""));
+    //     // var endExt = new XElement("endExt");   // Omit for national
+    //     // endExt.Add(new XElement("cPais", "1058")); // Brazil
+    //     // endExt.Add(new XElement("cEndPost", "0")); // Not applicable
+    //     // endExt.Add(new XElement("xCidade", ""));
+    //     // endExt.Add(new XElement("xEstProvReg", ""));
 
-        endereco.Add(new XElement("xLgr", Helpers.EscapeXmlContent(consumer.Address.Street)));
-        endereco.Add(new XElement("nro", consumer.Address.Number));
-        endereco.Add(new XElement("xCpl", Helpers.EscapeXmlContent(consumer.Address.Complement ?? "")));
-        endereco.Add(new XElement("xBairro", Helpers.EscapeXmlContent(consumer.Address.Neighborhood)));
+    //     endereco.Add(new XElement("xLgr", Helpers.EscapeXmlContent(consumer.Address.Street)));
+    //     endereco.Add(new XElement("nro", consumer.Address.Number));
+    //     endereco.Add(new XElement("xCpl", Helpers.EscapeXmlContent(consumer.Address.Complement ?? "")));
+    //     endereco.Add(new XElement("xBairro", Helpers.EscapeXmlContent(consumer.Address.Neighborhood)));
 
-        endereco.Add(endNac);
-        dest.Add(endereco);
+    //     endereco.Add(endNac);
+    //     dest.Add(endereco);
 
-        dest.Add(new XElement("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
-        dest.Add(new XElement("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
+    //     dest.Add(new XElement("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
+    //     dest.Add(new XElement("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
 
-        return dest;
-    }
+    //     return dest;
+    // }
 
-    private async Task<XElement> BuildIbsCbsAsync(Invoice invoice, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
+    private async Task<XElement> BuildIbsCbsAsync(Invoice invoice, Issuer issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
         var ibscbs = new XElement("IBSCBS");
 
@@ -408,34 +355,39 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         ibscbs.Add(new XElement("finNFSe", "0")); // 0 = Regular
         ibscbs.Add(new XElement("indFinal", "1")); // 1 = Final consumer -- this field will be deprecated
         ibscbs.Add(new XElement("cIndOp", codes.OperationIndicator)); // From service codes
+        // Government entity type (omit if not applicable)
+        // ibscbs.Add(new XElement("tpEnteGov", "1"));
 
         // Reference NFS-e if applicable (omit for new)
         // ibscbs.Add(new XElement("gRefNFSe", new XElement("refNFSe", "...")));
 
-        // Government entity type (omit if not applicable)
-        // ibscbs.Add(new XElement("tpEnteGov", "1"));
 
-        // Relationship indicator
-        ibscbs.Add(new XElement("indPessoasDest", "1")); // Default
+        // Indicador de Destino da Operação
+        var indDest = 1;  // Hardcoded for MVP: 1 = oper
+        ibscbs.Add(new XElement("indDest", indDest)); // 0 = tomador=adquirente=destinatario; 1 = tomador diferente do adquirente/destinatario
 
         // Destinatario (Recipient) - Required for IBS/CBS
-        var dest = await BuildDestinatarioAsync(invoice.ConsumerData, cancellationToken);
-        ibscbs.Add(dest);
+        if (indDest == 1)
+        {
+            var dest = await BuildDestinatarioAsync(consumer, ct);
+            ibscbs.Add(dest);
+        }
 
         // Imovel (Property) - Omit unless real estate
         // ibscbs.Add(BuildImovelSection(...));
 
         // Valores group with reembolsos and tributacao
-        var valores = await BuildValoresIbsCbsAsync(invoice, codes, cancellationToken);
+        var valores = await BuildValoresIbsCbsAsync(invoice, codes, ct);
         ibscbs.Add(valores);
 
         return ibscbs;
     }
 
-    private async Task<XElement> BuildDestinatarioAsync(string consumerDataJson, CancellationToken cancellationToken)
+    private async Task<XElement> BuildDestinatarioAsync(Consumer consumer, CancellationToken cancellationToken)
     {
-        var consumer = JsonSerializer.Deserialize<Consumer>(consumerDataJson)!;
         var dest = new XElement("dest");
+        string codMunConsumer = await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken);
+
 
         // ID: CPF/CNPJ/NIF
         if (consumer.CpfCnpj.Length == 11)
@@ -449,7 +401,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         dest.Add(new XElement("xNome", Helpers.EscapeXmlContent(consumer.Name)));
 
         // Address (endNac for national)
-        XElement end = BuildEndElement(consumer.Address);
+        XElement end = BuildEndElement(consumer.Address, codMunConsumer);
         dest.Add(end);
 
         // Phone and email
@@ -519,4 +471,46 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var municipality = await _municipalityRepo.GetByCityAndUfAsync(city, uf, cancellationToken);
         return municipality?.IbgeCode ?? "4204301"; // Default to example (Concórdia-SC IBGE)
     }
+
+        private string SignXml(XmlDocument xmlDoc, byte[] certificateData, string certificatePassword)
+    {
+        var certificate = X509CertificateLoader.LoadPkcs12(
+            certificateData, 
+            certificatePassword, 
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
+
+        // Create signed XML
+        // var xmlDoc = new XmlDocument
+        // {
+        //     PreserveWhitespace = false,
+        // };
+        // xmlDoc.LoadXml(xml);
+        var signedXml = new SignedXml(xmlDoc)
+        {
+            SigningKey = certificate.GetRSAPrivateKey()
+        };
+
+        // Reference the entire document
+        var reference = new Reference { Uri = "" };
+        reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
+        reference.AddTransform(new XmlDsigC14NTransform());
+        signedXml.AddReference(reference);
+
+        // Add key info
+        var keyInfo = new KeyInfo();
+        keyInfo.AddClause(new KeyInfoX509Data(certificate));
+        signedXml.KeyInfo = keyInfo;
+
+        // Compute signature
+        signedXml.ComputeSignature();
+
+        // Append signature to XML
+        var signatureElement = signedXml.GetXml();
+        xmlDoc.DocumentElement?.AppendChild(xmlDoc.ImportNode(signatureElement, true));
+
+        // _logger.LogDebug("XML signed successfully using certificate: {Thumbprint}", certificate.Thumbprint);
+
+        return xmlDoc.OuterXml;
+    }
+
 }

@@ -15,14 +15,15 @@ public static class DependencyInjection
         services.AddScoped<IMunicipalityRepository, MunicipalityRepository>();
         services.AddScoped<IPortalCredentialsRepository, PortalCredentialsRepository>();
 
-        // Services
-        services.AddScoped<IInvoiceXmlBuilder, IpmXmlBuilder>();
+        // XML Builders (concrete implementations - one per portal type)
+        services.AddScoped<IpmXmlBuilder>();
+        services.AddScoped<NationalXmlBuilder>();
+
+        // XML Builder Factory (selects implementation based on credentials portal_type)
+        services.AddScoped<IInvoiceXmlBuilderFactory, InvoiceXmlBuilderFactory>();
 
         // Command handlers
         services.AddScoped<EmitInvoiceCommandHandler>();
-
-
         return services;
     }
-
 }

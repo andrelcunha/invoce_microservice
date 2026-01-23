@@ -47,7 +47,6 @@ public class InvoiceXmlBuilderFactory : IInvoiceXmlBuilderFactory
             issuerCnpj,
             credentials.Municipality.Name,
             credentials.Municipality.Uf);
-
         return GetBuilder(credentials.PortalType);
     }
 
