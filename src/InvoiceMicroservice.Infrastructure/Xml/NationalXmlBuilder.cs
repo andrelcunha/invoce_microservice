@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Cryptography.Xml;
 using System.Text.Json;
@@ -11,10 +12,21 @@ namespace InvoiceMicroservice.Infrastructure.Xml;
 
 public class NationalXmlBuilder : IInvoiceXmlBuilder
 {
+    private static readonly XNamespace NfseNamespace = "http://www.sped.fazenda.gov.br/nfse";
+
     private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;
     private readonly IMunicipalityRepository _municipalityRepo;
     private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly ILogger<NationalXmlBuilder> _logger;
+
+    private static XElement El(string name, params object[] content)
+        => new XElement(NfseNamespace + name, content);
+
+    private static string FormatMonetary(decimal amount)
+        => amount.ToString("F2", CultureInfo.InvariantCulture);
+
+    private static string FormatRate(decimal rate)
+        => (rate * 100).ToString("F2", CultureInfo.InvariantCulture);
 
 
     public NationalXmlBuilder(
@@ -41,7 +53,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         if (credentials == null)
             throw new InvalidOperationException($"No portal credentials found for issuer CNPJ {issuer_cnpj}");
 
-        var root = new XElement("DPS", new XAttribute("versao", "2.0"));
+        var root = El("DPS", new XAttribute("versao", "1.01"));
         int serie = 1; // Hardcoded for MVP
         int numero = 1; // Hardcoded for MVP TODO: Find a way to get real series/number
         var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
@@ -53,21 +65,22 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
         var doc = XDocument.Parse(signedXml);
         doc.Declaration = new XDeclaration("1.0", "UTF-8", null);
-        var xmlString = doc.Declaration!.ToString() + Environment.NewLine + doc.ToString(SaveOptions.DisableFormatting);
+        var xmlString = doc.Declaration!.ToString() + Environment.NewLine + doc.ToString(SaveOptions.None);
         return xmlString;
     }
 
     private string BuildDpsId(string cnpj,  string codMun, int serie, int numero)
     {
+        var cnpjDigits = Helpers.OnlyDigits(cnpj);
         // A formação do identificador da DPS
         var builder = new System.Text.StringBuilder();
         builder.Append("DPS");
         // cod. municipal (7)
         builder.Append(codMun.PadLeft(7, '0'));
         // Tipo de inscrição federal (1) // 1=CPF, 2=CNPJ
-        builder.Append(cnpj.Length == 11 ? "1" : "2");
+        builder.Append(cnpjDigits.Length == 11 ? "1" : "2");
         // inscrição federal (14)  Se for CPF completar com 000 à esquerda
-        builder.Append(Helpers.OnlyDigits(cnpj).PadLeft(14, '0'));
+        builder.Append(cnpjDigits.PadLeft(14, '0'));
         // Serie (5)
         builder.Append(serie.ToString().PadRight(5, '0'));
         // Número da DPS (15)
@@ -78,27 +91,27 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     private async Task<XElement> BuildInfDpsAsync(Invoice invoice, Issuer issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
         var codMun = await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct);
-        var codMunToma = await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct);
+        var codMunToma = await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, ct);
 
         var id = BuildDpsId(issuer.Cnpj, codMun, serie, numero); 
-        var infDps = new XElement("infDPS", new XAttribute("Id", id));
+        var infDps = El("infDPS", new XAttribute("Id", id));
         // tpAmp - Tipo de Ambiente (1=Produção, 2=Homologação)
-        infDps.Add(new XElement("tpAmb", isTestMode ? "2" : "1")); // 1 - Produção, 2 - Homologação
+        infDps.Add(El("tpAmb", isTestMode ? "2" : "1")); // 1 - Produção, 2 - Homologação
         // dhEmi - Data e Hora de Emissão (ISO 8601)
-        infDps.Add(new XElement("dhEmi", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")));
+        infDps.Add(El("dhEmi", DateTime.Now.ToString("yyyy-MM-ddTHH:mm:sszzz")));
         // verAplic - Versão do Aplicativo
-        infDps.Add(new XElement("verAplic", "1.0.0")); // Hardcoded for MVP
+        infDps.Add(El("verAplic", "1.0.0")); // Hardcoded for MVP
         // serie
-        infDps.Add(new XElement("serie", serie));
+        infDps.Add(El("serie", serie));
         // numero
-        infDps.Add(new XElement("nDPS", numero));
-        infDps.Add(new XElement("dCompet", invoice.IssuedAt?.ToString("yyyy-MM-dd") ?? DateTime.UtcNow.ToString("yyyy-MM-dd")));
+        infDps.Add(El("nDPS", numero));
+        infDps.Add(El("dCompet", invoice.IssuedAt?.ToString("yyyy-MM-dd") ?? DateTime.UtcNow.ToString("yyyy-MM-dd")));
         //  tpEmit - Emitente da DPS (1=Prestador de Serviço, 2=Tomador de Serviço, 3=Intermediário)
-        infDps.Add(new XElement("tpEmit", "1")); // Always Prestador 
+        infDps.Add(El("tpEmit", "1")); // Always Prestador 
         // cMotivoEmisTI - Código do Motivo de Emissão em Sistema pelo tomador/intermediário
         // chNFSeRej - Chave da NFS-e rejeitada
         // cLocEmi - Código do Local de Emissão (7) Código IBGE
-        infDps.Add(new XElement("cLocEmi", codMun));
+        infDps.Add(El("cLocEmi", codMun));
         // grupo 'subst' -- não se aplica
         infDps.Add(BuildDpsPrest(issuer, codMun));
         infDps.Add(BuildDpsToma(consumer, codMunToma));
@@ -111,29 +124,31 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
     private XElement BuildDpsPrest(Issuer issuer, string codMun)
     {
-        var prest = new XElement("prest");
-        if (issuer.Cnpj.Length == 11)
-            prest.Add(new XElement("CPF", Helpers.OnlyDigits(issuer.Cnpj)));
+        var prest = El("prest");
+        var issuerDigits = Helpers.OnlyDigits(issuer.Cnpj);
+        if (issuerDigits.Length == 11)
+            prest.Add(El("CPF", issuerDigits));
         else
-            prest.Add(new XElement("CNPJ", Helpers.OnlyDigits(issuer.Cnpj)));
+            prest.Add(El("CNPJ", issuerDigits));
         // NIF --  não preenchido se tpEmit = 1
         // cNaoNIF --  não preenchido se tpEmit = 1
         // CAEPF -- não preenchido se tpEmit = 1
-        // prest.Add(new XElement("IM", issuer.MunicipalInscription));
-        prest.Add(new XElement("xNome", Helpers.EscapeXmlContent(issuer.Name)));
+        if (!string.IsNullOrWhiteSpace(issuer.MunicipalInscription))
+            prest.Add(El("IM", Helpers.OnlyDigits(issuer.MunicipalInscription)));
+        prest.Add(El("xNome", Helpers.EscapeXmlContent(issuer.Name)));
         prest.Add(BuildEndElement(issuer.Address, codMun));
-        prest.Add(new XElement("fone", Helpers.OnlyDigits("")));
-        prest.Add(new XElement("email", Helpers.EscapeXmlContent("")));
+        // prest.Add(El("fone", Helpers.OnlyDigits("")));
+        // prest.Add(El("email", Helpers.EscapeXmlContent("")));
 
-        var regTrib = new XElement("regTrib");
+        var regTrib = El("regTrib");
         // opSimpNac - Optante do Simples Nacional (1=Nao, 2= MEI, 3= ME/EPP)
         int opSimNac = EvaluateSimplesNacionalRegime(issuer);
-        regTrib.Add(new XElement("opSimpNac", opSimNac));
+        regTrib.Add(El("opSimpNac", opSimNac));
         // regApTribSN - Regime de Apuração do Simples Nacional
         if (opSimNac == 3)
-            regTrib.Add(new XElement("regApTribSN", EvaluateRegApTribSN(issuer)));
+            regTrib.Add(El("regApTribSN", EvaluateRegApTribSN(issuer)));
         // regEspTrib - Regime Especial de Tributação
-        regTrib.Add(new XElement("regEspTrib", EvaluateRegEspTrib(issuer)));
+        regTrib.Add(El("regEspTrib", EvaluateRegEspTrib(issuer)));
         // regEspTrib
         prest.Add(regTrib);
         return prest;
@@ -141,18 +156,18 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
     private static XElement BuildEndElement(Address address, string codMun)
     {
-        var end = new XElement("end");
-        var endNac = new XElement("endNac");
-        endNac.Add(new XElement("cMun", codMun)); // To be filled with IBGE code
-        endNac.Add(new XElement("CEP", Helpers.OnlyDigits(address.ZipCode)));
+        var end = El("end");
+        var endNac = El("endNac");
+        endNac.Add(El("cMun", codMun)); // To be filled with IBGE code
+        endNac.Add(El("CEP", Helpers.OnlyDigits(address.ZipCode)));
         end.Add(endNac);
-        end.Add(new XElement("xLgr", Helpers.EscapeXmlContent(address.Street)));
-        end.Add(new XElement("nro", address.Number));
+        end.Add(El("xLgr", Helpers.EscapeXmlContent(address.Street)));
+        end.Add(El("nro", address.Number));
         if (string.IsNullOrEmpty(address.Complement) == false)
         {
-            end.Add(new XElement("xCpl", Helpers.EscapeXmlContent(address.Complement ?? "")));
+            end.Add(El("xCpl", Helpers.EscapeXmlContent(address.Complement ?? "")));
         }
-        end.Add(new XElement("xBairro", Helpers.EscapeXmlContent(address.Neighborhood)));
+        end.Add(El("xBairro", Helpers.EscapeXmlContent(address.Neighborhood)));
         // endExt -- omitido no prestador nacional
         return end;
     }
@@ -203,38 +218,42 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     }
     private XElement BuildDpsToma(Consumer consumer, string codMun)
     {
-        var tom = new XElement("toma");
-        if (consumer.CpfCnpj.Length == 11)
-            tom.Add(new XElement("CPF", Helpers.OnlyDigits(consumer.CpfCnpj)));
+        var tom = El("toma");
+        var consumerDigits = Helpers.OnlyDigits(consumer.CpfCnpj);
+        if (consumerDigits.Length == 11)
+            tom.Add(El("CPF", consumerDigits));
         else
-            tom.Add(new XElement("CNPJ", Helpers.OnlyDigits(consumer.CpfCnpj)));
+            tom.Add(El("CNPJ", consumerDigits));
         // NIF -- omitido se tpEmit = 1
         // cNaoNIF -- omitido se tpEmit = 1
-        tom.Add(new XElement("xNome", Helpers.EscapeXmlContent(consumer.Name)));
+        tom.Add(El("xNome", Helpers.EscapeXmlContent(consumer.Name)));
         var end = BuildEndElement(consumer.Address, codMun);
         tom.Add(end);
-        tom.Add(new XElement("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
-        tom.Add(new XElement("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
+        if (!string.IsNullOrWhiteSpace(consumer.Phone))
+            tom.Add(El("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
+        if (!string.IsNullOrWhiteSpace(consumer.Email))
+            tom.Add(El("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
         return tom;
     }
 
     private async Task<XElement> BuildServAsync(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
-        var servico = new XElement("serv");
+        var servico = El("serv");
 
-        var locPrest = new XElement("locPrest");
-        locPrest.Add(new XElement("cLocPrestacao", await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct)));
+        var locPrest = El("locPrest");
+        locPrest.Add(El("cLocPrestacao", await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct)));
         servico.Add(locPrest);
 
-        var cServ = new XElement("cServ");
+        var cServ = El("cServ");
         // cTribNac - Código de Tributação Nacional do ISSQN
-        cServ.Add(new XElement("cTribNac", codes.ServiceListCode));
+        cServ.Add(El("cTribNac", Helpers.StripDots(codes.ServiceListCode)));
         // cTribMun
-        cServ.Add(new XElement("cTribMun", invoice.MunicipalTaxCode));
+        if (!string.IsNullOrWhiteSpace(invoice.MunicipalTaxCode))
+            cServ.Add(El("cTribMun", Helpers.StripDots(invoice.MunicipalTaxCode)));
         // xDescServ
-        cServ.Add(new XElement("xDescServ", codes.Description));
+        cServ.Add(El("xDescServ", Helpers.EscapeXmlContent(invoice.ServiceDescription)));
         // cNBS
-        cServ.Add(new XElement("cNBS", codes.NbsCode));
+        cServ.Add(El("cNBS", Helpers.StripDots(codes.NbsCode)));
         // cServ.Add(new XElement("cIntContrib", invoice.Id.ToString()));  // cIntContrib - Código interno do contribuinte (id no Sistema Interno do Contribuinte)
         servico.Add(cServ);
         // grupo 'comExt' (comércio exterior) -- omitido para nacional
@@ -248,14 +267,14 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     private XElement BuildValoresAsync(Invoice invoice)
     {
         // grupo valores
-        var valores = new XElement("valores");
-        var vServPrest = new XElement("vServPrest");
+        var valores = El("valores");
+        var vServPrest = El("vServPrest");
         var temIntermediario = false; // Hardcoded for MVP
         if (temIntermediario)
         {
-            vServPrest.Add(new XElement("vReceb", Helpers.FormatMonetary(invoice.Amount))); // valor recebido pelo intermediário  
+            vServPrest.Add(El("vReceb", FormatMonetary(invoice.Amount))); // valor recebido pelo intermediário  
         }
-        vServPrest.Add(new XElement("vServ", Helpers.FormatMonetary(invoice.Amount)));
+        vServPrest.Add(El("vServ", FormatMonetary(invoice.Amount)));
         valores.Add(vServPrest);
 
         // var vDescCondIncond = new XElement("vDescCondIncond");
@@ -264,93 +283,53 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // valores.Add(vDescCondIncond);
 
         // var vDedRed = new XElement("vDedRed");
-        var trib = new XElement("trib");
-        var tribMun = new XElement("tribMun");
-        var tribISSQN = invoice.IssRate > 0 ? 2 : 1;
-        tribMun.Add(new XElement("tribISSQN", tribISSQN)); // 1 = Tributável, 2 = Imunidade, 3 - Exportação, 4 - Não Incidência
-        var tpRetISSQN = tribISSQN == 1 ? invoice.IssRate > 0 ? 2 : 1 : 1;
-        tribMun.Add(new XElement("tpRetISSQN", tpRetISSQN)); // 1 = Não Retido, 2 = Retido pelo tomador 3 = Retido pelo intermediário
+        var trib = El("trib");
+        var tribMun = El("tribMun");
+        var tribISSQN = invoice.IssRate > 0 ? 1 : 2;
+        tribMun.Add(El("tribISSQN", tribISSQN)); // 1 = Tributável, 2 = Imunidade, 3 - Exportação, 4 - Não Incidência
+        var tpRetISSQN = 1; // 1 = Não Retido (default)
+        tribMun.Add(El("tpRetISSQN", tpRetISSQN)); // 1 = Não Retido, 2 = Retido pelo tomador 3 = Retido pelo intermediário
         if (tribISSQN == 1)
-            tribMun.Add(new XElement("pAliq", Helpers.FormatRate(invoice.IssRate)));
+            tribMun.Add(El("pAliq", FormatRate(invoice.IssRate)));
         trib.Add(tribMun);
 
-        var tribFed = new XElement("tribFed");
-        var pisCofins = new XElement("pisCofins");
+        var tribFed = El("tribFed");
+        var pisCofins = El("pisCofins");
         // Código de Situação Tributária do PIS/COFINS
-        pisCofins.Add(new XElement("CTS",  invoice.PisCofinsCts)); 
-        pisCofins.Add(new XElement("vBCPisCofins", Helpers.FormatMonetary(invoice.Amount))); // Base de Cálculo
-        pisCofins.Add(new XElement("pAliqPis", Helpers.FormatRate(invoice.AliquotaPis))); 
-        pisCofins.Add(new XElement("pAliqCofins", Helpers.FormatRate(invoice.AliquotaCofins)));
-        pisCofins.Add(new XElement("vPis", Helpers.FormatMonetary(invoice.Amount * invoice.AliquotaPis))); 
-        pisCofins.Add(new XElement("vCofins", Helpers.FormatMonetary(invoice.Amount * invoice.AliquotaCofins)));
-        pisCofins.Add(new XElement("tpRetPisCofins", invoice.TipoRetencaoPisCofins));
+        pisCofins.Add(El("CST", invoice.PisCofinsCts ?? "01"));
+        pisCofins.Add(El("vBCPisCofins", FormatMonetary(invoice.Amount))); // Base de Cálculo
+        pisCofins.Add(El("pAliqPis", FormatRate(invoice.AliquotaPis))); 
+        pisCofins.Add(El("pAliqCofins", FormatRate(invoice.AliquotaCofins)));
+        pisCofins.Add(El("vPis", FormatMonetary(invoice.Amount * invoice.AliquotaPis))); 
+        pisCofins.Add(El("vCofins", FormatMonetary(invoice.Amount * invoice.AliquotaCofins)));
+        pisCofins.Add(El("tpRetPisCofins", invoice.TipoRetencaoPisCofins ?? "2"));
         tribFed.Add(pisCofins);
         trib.Add(tribFed);
 
-        var totTrib = new XElement("totTrib");
-        var vTotTrib = new XElement("vTotTrib");
-        vTotTrib.Add(new XElement("vTotTribFed", Helpers.FormatMonetary(invoice.Amount * invoice.AliquotaPis)));
+        var totTrib = El("totTrib");
+        var vTotTrib = El("vTotTrib");
+        vTotTrib.Add(El("vTotTribFed", FormatMonetary(invoice.Amount * (invoice.AliquotaPis + invoice.AliquotaCofins))));
         // vTotTrib.Add(new XElement("vTotTribEst", Helpers.FormatMonetary(0)));
-        vTotTrib.Add(new XElement("vTotTribMun", Helpers.FormatMonetary(invoice.Amount * invoice.IssRate)));
+        vTotTrib.Add(El("vTotTribMun", FormatMonetary(invoice.Amount * invoice.IssRate)));
         totTrib.Add(vTotTrib);
-        var pTotTrib = new XElement("pTotTrib");
-        pTotTrib.Add(new XElement("pTotTribFed", Helpers.FormatRate((invoice.AliquotaPis  + invoice.AliquotaCofins) * 100)));
+        var pTotTrib = El("pTotTrib");
+        pTotTrib.Add(El("pTotTribFed", FormatRate(invoice.AliquotaPis + invoice.AliquotaCofins)));
         // pTotTrib.Add(new XElement("pTotTribEst", Helpers.FormatRate(0)));
-        pTotTrib.Add(new XElement("pTotTribMun", Helpers.FormatRate(invoice.IssRate * 100)));
+        pTotTrib.Add(El("pTotTribMun", FormatRate(invoice.IssRate)));
         totTrib.Add(pTotTrib);
         trib.Add(totTrib);
         valores.Add(trib);
         return valores;
     }
 
-    // private async Task<XElement> BuildTomadorAsync(Consumer consumer, CancellationToken cancellationToken)
-    // {
-    //     var dest = new XElement("dest");
-
-    //     if (consumer.CpfCnpj.Length == 11)
-    //         dest.Add(new XElement("CPF", Helpers.OnlyDigits(consumer.CpfCnpj)));
-    //     else
-    //         dest.Add(new XElement("CNPJ", Helpers.OnlyDigits(consumer.CpfCnpj)));
-
-    //     // NIF for foreign entities
-    //     dest.Add(new XElement("cNaoNIF", "0")); // 0 = Não informado ; 1 = Dispensado; 2 = Não exigência do NIF
-
-    //     dest.Add(new XElement("xNome", Helpers.EscapeXmlContent(consumer.Name)));
-
-    //     var endereco = new XElement("end");
-
-    //     var endNac = new XElement("endNac");
-    //     endNac.Add(new XElement("cMun", await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken)));
-    //     endNac.Add(new XElement("CEP", Helpers.OnlyDigits(consumer.Address.ZipCode)));
-
-    //     // var endExt = new XElement("endExt");   // Omit for national
-    //     // endExt.Add(new XElement("cPais", "1058")); // Brazil
-    //     // endExt.Add(new XElement("cEndPost", "0")); // Not applicable
-    //     // endExt.Add(new XElement("xCidade", ""));
-    //     // endExt.Add(new XElement("xEstProvReg", ""));
-
-    //     endereco.Add(new XElement("xLgr", Helpers.EscapeXmlContent(consumer.Address.Street)));
-    //     endereco.Add(new XElement("nro", consumer.Address.Number));
-    //     endereco.Add(new XElement("xCpl", Helpers.EscapeXmlContent(consumer.Address.Complement ?? "")));
-    //     endereco.Add(new XElement("xBairro", Helpers.EscapeXmlContent(consumer.Address.Neighborhood)));
-
-    //     endereco.Add(endNac);
-    //     dest.Add(endereco);
-
-    //     dest.Add(new XElement("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
-    //     dest.Add(new XElement("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
-
-    //     return dest;
-    // }
-
     private async Task<XElement> BuildIbsCbsAsync(Invoice invoice, Issuer issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
-        var ibscbs = new XElement("IBSCBS");
+        var ibscbs = El("IBSCBS");
 
         // Basic indicators
-        ibscbs.Add(new XElement("finNFSe", "0")); // 0 = Regular
-        ibscbs.Add(new XElement("indFinal", "1")); // 1 = Final consumer -- this field will be deprecated
-        ibscbs.Add(new XElement("cIndOp", codes.OperationIndicator)); // From service codes
+        ibscbs.Add(El("finNFSe", "0")); // 0 = Regular
+        ibscbs.Add(El("indFinal", "1")); // 1 = Final consumer -- this field will be deprecated
+        ibscbs.Add(El("cIndOp", codes.OperationIndicator)); // From service codes
         // Government entity type (omit if not applicable)
         // ibscbs.Add(new XElement("tpEnteGov", "1"));
 
@@ -360,7 +339,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
         // Indicador de Destino da Operação
         var indDest = 1;  // Hardcoded for MVP: 1 = oper
-        ibscbs.Add(new XElement("indDest", indDest)); // 0 = tomador=adquirente=destinatario; 1 = tomador diferente do adquirente/destinatario
+        ibscbs.Add(El("indDest", indDest)); // 0 = tomador=adquirente=destinatario; 1 = tomador diferente do adquirente/destinatario
 
         // Destinatario (Recipient) - Required for IBS/CBS
         if (indDest == 1)
@@ -381,50 +360,53 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
     private async Task<XElement> BuildDestinatarioAsync(Consumer consumer, CancellationToken cancellationToken)
     {
-        var dest = new XElement("dest");
+        var dest = El("dest");
         string codMunConsumer = await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken);
 
 
         // ID: CPF/CNPJ/NIF
-        if (consumer.CpfCnpj.Length == 11)
-            dest.Add(new XElement("CPF", Helpers.OnlyDigits(consumer.CpfCnpj)));
-        else if (consumer.CpfCnpj.Length == 14)
-            dest.Add(new XElement("CNPJ", Helpers.OnlyDigits(consumer.CpfCnpj)));
+        var consumerDigits = Helpers.OnlyDigits(consumer.CpfCnpj);
+        if (consumerDigits.Length == 11)
+            dest.Add(El("CPF", consumerDigits));
+        else if (consumerDigits.Length == 14)
+            dest.Add(El("CNPJ", consumerDigits));
         else
-            dest.Add(new XElement("NIF", consumer.CpfCnpj)); // Foreign
+            dest.Add(El("NIF", consumer.CpfCnpj)); // Foreign
 
-        dest.Add(new XElement("cNaoNIF", "0")); // Default: Not informed
-        dest.Add(new XElement("xNome", Helpers.EscapeXmlContent(consumer.Name)));
+        dest.Add(El("cNaoNIF", "0")); // Default: Not informed
+        dest.Add(El("xNome", Helpers.EscapeXmlContent(consumer.Name)));
 
         // Address (endNac for national)
         XElement end = BuildEndElement(consumer.Address, codMunConsumer);
         dest.Add(end);
 
         // Phone and email
-        dest.Add(new XElement("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
-        dest.Add(new XElement("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
+        if (!string.IsNullOrWhiteSpace(consumer.Phone))
+            dest.Add(El("fone", Helpers.OnlyDigits(consumer.Phone ?? "")));
+        if (!string.IsNullOrWhiteSpace(consumer.Email))
+            dest.Add(El("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
 
         return dest;
     }
 
     private async Task<XElement> BuildValoresIbsCbsAsync(Invoice invoice, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
     {
-        var valores = new XElement("valores");
+        var valores = El("valores");
 
         // gReeRepRes: Reembolsos/Repasses - Omit if none, or add for exclusions from BC
         // For MVP: Assume no reembolsos
         // valores.Add(BuildReeRepResSection(...));
 
         // Tributacao group
-        var trib = new XElement("trib");
-        var gIBSCBS = new XElement("gIBSCBS");
-        gIBSCBS.Add(new XElement("CST", invoice.IbsCbsCst)); 
-        gIBSCBS.Add(new XElement("cClassTrib", invoice.IbsCbsClassTrib)); 
+        var trib = El("trib");
+        var gIBSCBS = El("gIBSCBS");
+        gIBSCBS.Add(El("CST", invoice.IbsCbsCst ?? "000")); 
+        gIBSCBS.Add(El("cClassTrib", invoice.IbsCbsClassTrib ?? "000000")); 
         // gIBSCBS.Add(new XElement("cCredPres", "...")); // Presumed credit code if applicable
 
         // gTribRegular: Regular taxation details
-        var gTribRegular = new XElement("gTribRegular");
-        gTribRegular.Add(new XElement("CSTReg", "01")); // Example
+        var gTribRegular = El("gTribRegular");
+        gTribRegular.Add(El("CSTReg", "01")); // Example
         // gTribRegular.Add(new XElement("cClassTribReg", codes.TaxClassificationCode));
         gIBSCBS.Add(gTribRegular);
 
