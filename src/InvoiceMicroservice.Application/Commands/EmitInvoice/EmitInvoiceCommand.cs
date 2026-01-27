@@ -31,7 +31,7 @@ public record EmitInvoiceData
     /// </summary>
     public decimal IssRate { get; init; }
 
-    public int? PisConfinsCts { get; init; }
+    public int? PisCofinsCts { get; init; }
 
     public decimal AliquotaPis { get; init; }
     public decimal AliquotaCofins { get; init; }
@@ -40,8 +40,8 @@ public record EmitInvoiceData
     { 
         get
         {
-            return PisConfinsCts.HasValue 
-                ? PisConfinsCts.Value.ToString("D2") 
+            return PisCofinsCts.HasValue 
+                ? PisCofinsCts.Value.ToString("D2") 
                 : "00";
         }
     }
@@ -75,8 +75,8 @@ public class EmitInvoiceCommandHandler
         var issuerJson = JsonSerializer.Serialize(request.Data.Issuer);
         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
 
-        string ctsPisConfins = request.Data.PisConfinsCts.HasValue 
-            ? request.Data.PisConfinsCts.Value.ToString("D2") 
+        string ctsPisCofins = request.Data.PisCofinsCts.HasValue 
+            ? request.Data.PisCofinsCts.Value.ToString("D2") 
             : "00";
 
         var invoice = Invoice.Create(
@@ -89,7 +89,7 @@ public class EmitInvoiceCommandHandler
             request.Data.IssuedAt,
             request.Data.IssRate,
             request.Data.MunicipalTaxCode,
-            ctsPisConfins,
+            ctsPisCofins,
             request.Data.ServiceTypeKey,
             request.Data.AliquotaPis,
             request.Data.AliquotaCofins,
