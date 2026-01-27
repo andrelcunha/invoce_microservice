@@ -36,15 +36,7 @@ public record EmitInvoiceData
     public decimal AliquotaPis { get; init; }
     public decimal AliquotaCofins { get; init; }
 
-    public string TipoRetencaoPisCofins 
-    { 
-        get
-        {
-            return PisCofinsCts.HasValue 
-                ? PisCofinsCts.Value.ToString("D2") 
-                : "00";
-        }
-    }
+    public string TipoRetencaoPisCofins { get; init; } = null!;
 
     public string IbsCbsClassTrib { get; init; } = null!;
 
