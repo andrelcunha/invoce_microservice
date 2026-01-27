@@ -248,8 +248,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // cTribNac - Código de Tributação Nacional do ISSQN
         cServ.Add(El("cTribNac", Helpers.StripDots(codes.ServiceListCode)));
         // cTribMun
-        if (!string.IsNullOrWhiteSpace(invoice.MunicipalTaxCode))
-            cServ.Add(El("cTribMun", Helpers.StripDots(invoice.MunicipalTaxCode)));
+        // if (!string.IsNullOrWhiteSpace(invoice.MunicipalTaxCode))
+        //     cServ.Add(El("cTribMun", Helpers.StripDots(invoice.MunicipalTaxCode)));
         // xDescServ
         cServ.Add(El("xDescServ", Helpers.EscapeXmlContent(invoice.ServiceDescription)));
         // cNBS
@@ -294,7 +294,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         trib.Add(tribMun);
 
         var tribFed = El("tribFed");
-        var pisCofins = El("pisCofins");
+        var pisCofins = El("piscofins");
         // Código de Situação Tributária do PIS/COFINS
         pisCofins.Add(El("CST", invoice.PisCofinsCts ?? "01"));
         pisCofins.Add(El("vBCPisCofins", FormatMonetary(invoice.Amount))); // Base de Cálculo
@@ -309,7 +309,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var totTrib = El("totTrib");
         var vTotTrib = El("vTotTrib");
         vTotTrib.Add(El("vTotTribFed", FormatMonetary(invoice.Amount * (invoice.AliquotaPis + invoice.AliquotaCofins))));
-        // vTotTrib.Add(new XElement("vTotTribEst", Helpers.FormatMonetary(0)));
+        vTotTrib.Add(El("vTotTribEst", FormatMonetary(0)));
         vTotTrib.Add(El("vTotTribMun", FormatMonetary(invoice.Amount * invoice.IssRate)));
         totTrib.Add(vTotTrib);
         var pTotTrib = El("pTotTrib");
