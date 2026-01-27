@@ -54,8 +54,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
             throw new InvalidOperationException($"No portal credentials found for issuer CNPJ {issuer_cnpj}");
 
         var root = El("DPS", new XAttribute("versao", "1.01"));
-        int serie = 1; // Hardcoded for MVP
-        int numero = 1; // Hardcoded for MVP TODO: Find a way to get real series/number
+        int serie = 1111; // Hardcoded for MVP
+        int numero = 9999; // Hardcoded for MVP TODO: Find a way to get real series/number
         var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
         var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes,  serie, numero, isTestMode, cancellationToken);
@@ -65,7 +65,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
         var doc = XDocument.Parse(signedXml);
         doc.Declaration = new XDeclaration("1.0", "UTF-8", null);
-        var xmlString = doc.Declaration!.ToString() + Environment.NewLine + doc.ToString(SaveOptions.None);
+        var xmlString = doc.Declaration!.ToString() + Environment.NewLine + doc.ToString(SaveOptions.DisableFormatting);
         return xmlString;
     }
 
@@ -82,7 +82,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // inscrição federal (14)  Se for CPF completar com 000 à esquerda
         builder.Append(cnpjDigits.PadLeft(14, '0'));
         // Serie (5)
-        builder.Append(serie.ToString().PadRight(5, '0'));
+        builder.Append(serie.ToString().PadLeft(5, '0'));
         // Número da DPS (15)
         builder.Append(numero.ToString().PadLeft(15, '0'));
         return builder.ToString();
@@ -133,10 +133,14 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // NIF --  não preenchido se tpEmit = 1
         // cNaoNIF --  não preenchido se tpEmit = 1
         // CAEPF -- não preenchido se tpEmit = 1
-        if (!string.IsNullOrWhiteSpace(issuer.MunicipalInscription))
-            prest.Add(El("IM", Helpers.OnlyDigits(issuer.MunicipalInscription)));
-        prest.Add(El("xNome", Helpers.EscapeXmlContent(issuer.Name)));
-        prest.Add(BuildEndElement(issuer.Address, codMun));
+        // if (!string.IsNullOrWhiteSpace(issuer.MunicipalInscription))
+        //     prest.Add(El("IM", Helpers.OnlyDigits(issuer.MunicipalInscription)));
+        
+        // O nome ou razão social do prestador de serviço não derve ser informado se o emissor for o próprio prestador
+        //prest.Add(El("xNome", Helpers.EscapeXmlContent(issuer.Name)));
+
+        // Se o emissor é o próprio prestador, o endereço deve ser omitido
+        // prest.Add(BuildEndElement(issuer.Address, codMun));
         // prest.Add(El("fone", Helpers.OnlyDigits("")));
         // prest.Add(El("email", Helpers.EscapeXmlContent("")));
 
@@ -249,7 +253,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         cServ.Add(El("cTribNac", Helpers.StripDots(codes.ServiceListCode)));
         // cTribMun
         // if (!string.IsNullOrWhiteSpace(invoice.MunicipalTaxCode))
-        //     cServ.Add(El("cTribMun", Helpers.StripDots(invoice.MunicipalTaxCode)));
+            cServ.Add(El("cTribMun", Helpers.StripDots("001")));
         // xDescServ
         cServ.Add(El("xDescServ", Helpers.EscapeXmlContent(invoice.ServiceDescription)));
         // cNBS
@@ -289,7 +293,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         tribMun.Add(El("tribISSQN", tribISSQN)); // 1 = Tributável, 2 = Imunidade, 3 - Exportação, 4 - Não Incidência
         var tpRetISSQN = 1; // 1 = Não Retido (default)
         tribMun.Add(El("tpRetISSQN", tpRetISSQN)); // 1 = Não Retido, 2 = Retido pelo tomador 3 = Retido pelo intermediário
-        if (tribISSQN == 1)
+        if (tribISSQN != 1) // pAliq deve ser omitido se o prestador não for Simples Nacional ou se o convenio municipal estiver em vigor
             tribMun.Add(El("pAliq", FormatRate(invoice.IssRate)));
         trib.Add(tribMun);
 
@@ -312,11 +316,11 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         vTotTrib.Add(El("vTotTribEst", FormatMonetary(0)));
         vTotTrib.Add(El("vTotTribMun", FormatMonetary(invoice.Amount * invoice.IssRate)));
         totTrib.Add(vTotTrib);
-        var pTotTrib = El("pTotTrib");
-        pTotTrib.Add(El("pTotTribFed", FormatRate(invoice.AliquotaPis + invoice.AliquotaCofins)));
-        // pTotTrib.Add(new XElement("pTotTribEst", Helpers.FormatRate(0)));
-        pTotTrib.Add(El("pTotTribMun", FormatRate(invoice.IssRate)));
-        totTrib.Add(pTotTrib);
+        // var pTotTrib = El("pTotTrib");
+        // pTotTrib.Add(El("pTotTribFed", FormatRate(invoice.AliquotaPis + invoice.AliquotaCofins)));
+        // pTotTrib.Add(El("pTotTribEst", FormatRate(0)));
+        // pTotTrib.Add(El("pTotTribMun", FormatRate(invoice.IssRate)));
+        // totTrib.Add(pTotTrib);
         trib.Add(totTrib);
         valores.Add(trib);
         return valores;
@@ -370,10 +374,11 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
             dest.Add(El("CPF", consumerDigits));
         else if (consumerDigits.Length == 14)
             dest.Add(El("CNPJ", consumerDigits));
-        else
+        else{
             dest.Add(El("NIF", consumer.CpfCnpj)); // Foreign
+            dest.Add(El("cNaoNIF", "0")); // Default: Not informed
+        }
 
-        dest.Add(El("cNaoNIF", "0")); // Default: Not informed
         dest.Add(El("xNome", Helpers.EscapeXmlContent(consumer.Name)));
 
         // Address (endNac for national)
@@ -404,11 +409,11 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         gIBSCBS.Add(El("cClassTrib", invoice.IbsCbsClassTrib ?? "000000")); 
         // gIBSCBS.Add(new XElement("cCredPres", "...")); // Presumed credit code if applicable
 
-        // gTribRegular: Regular taxation details
-        var gTribRegular = El("gTribRegular");
-        gTribRegular.Add(El("CSTReg", "01")); // Example
-        // gTribRegular.Add(new XElement("cClassTribReg", codes.TaxClassificationCode));
-        gIBSCBS.Add(gTribRegular);
+        // // gTribRegular: Regular taxation details
+        // var gTribRegular = El("gTribRegular");
+        // gTribRegular.Add(El("CSTReg", "01")); // Example
+        // // gTribRegular.Add(new XElement("cClassTribReg", codes.TaxClassificationCode));
+        // gIBSCBS.Add(gTribRegular);
 
         // gDif: Deferrals 
         // var gDif = new XElement("gDif");
