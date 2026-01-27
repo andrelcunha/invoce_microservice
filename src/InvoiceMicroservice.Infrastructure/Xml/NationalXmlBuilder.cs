@@ -135,7 +135,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // CAEPF -- não preenchido se tpEmit = 1
         // if (!string.IsNullOrWhiteSpace(issuer.MunicipalInscription))
         //     prest.Add(El("IM", Helpers.OnlyDigits(issuer.MunicipalInscription)));
-        
+
         // O nome ou razão social do prestador de serviço não derve ser informado se o emissor for o próprio prestador
         //prest.Add(El("xNome", Helpers.EscapeXmlContent(issuer.Name)));
 
@@ -301,7 +301,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var pisCofins = El("piscofins");
         // Código de Situação Tributária do PIS/COFINS
         pisCofins.Add(El("CST", invoice.PisCofinsCts ?? "01"));
-        pisCofins.Add(El("vBCPisCofins", FormatMonetary(invoice.Amount))); // Base de Cálculo
+        if (invoice.PisCofinsCts != "00")
+            pisCofins.Add(El("vBCPisCofins", FormatMonetary(invoice.Amount))); // Base de Cálculo
         pisCofins.Add(El("pAliqPis", FormatRate(invoice.AliquotaPis))); 
         pisCofins.Add(El("pAliqCofins", FormatRate(invoice.AliquotaCofins)));
         pisCofins.Add(El("vPis", FormatMonetary(invoice.Amount * invoice.AliquotaPis))); 
