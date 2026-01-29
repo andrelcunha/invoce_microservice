@@ -103,16 +103,18 @@ public class NationalApiClient : IApiClient
 
             if (!response.IsSuccessStatusCode)
             {
-                if (response.StatusCode == HttpStatusCode.BadRequest)
+                if (response.StatusCode == HttpStatusCode.BadRequest ||
+                    response.StatusCode == HttpStatusCode.Forbidden ||
+                    response.StatusCode == HttpStatusCode.InternalServerError)
                 {
                     try 
                     {
-                        var errorResponse = JsonSerializer.Deserialize<NationalNfseSubmissionResponse>(responseContent);
-                        if (errorResponse != null && errorResponse.Alertas.Count > 0)
+                        var errorResponse = JsonSerializer.Deserialize<NationalNfseErrorResponse>(responseContent);
+                        if (errorResponse != null && errorResponse.Erros.Count > 0)
                         {
                             _logger.LogWarning(
-                                "National API returned alerts: {Alerts}",
-                                string.Join(", ", errorResponse.Alertas));
+                                "National API returned errors: {Errors}",
+                                string.Join(", ", errorResponse.Erros));
                         }
                         return new NfseSubmissionResult
                         {
@@ -140,7 +142,7 @@ public class NationalApiClient : IApiClient
                 "DPS submitted successfully - Response: {Response}",
                 responseContent);
 
-            var submissionResponse = JsonSerializer.Deserialize<NationalNfseSubmissionResponse>(responseContent);
+            var submissionResponse = JsonSerializer.Deserialize<NationalNfseSuccessResponse>(responseContent);
             if (submissionResponse == null)
             {
                 _logger.LogError("Failed to deserialize National API response: {Response}", responseContent);
@@ -229,26 +231,35 @@ public class NationalApiClient : IApiClient
     }
 }
 
-public class NationalNfseSubmissionResponse
+public class NationalNfseSuccessResponse : NationalNfseResponse
 {
-    public TipoAmbiente TipoAmbiente { get; set; }
-    public string VersaoAplicativo { get; set; } = null!;
-    public DateTime DataHoraProcessamento { get; set; }
-    public string IdDps { get; set; } = null!;
     public string ChaveAcesso { get; set; } = null!;
     public string nfseXmlGZipB64 { get; set; } = null!;
-    public List<string> Alertas { get; set; } = new();
-    public List<Erro> Erros { get; set; } = new();
-
-    public class Erro
-    {
-        public string Codigo { get; set; } = null!;
-        public string Descricao { get; set; } = null!;
-    }
+    public List<MensagemProcessamento> Alertas { get; set; } = new();
+}
+public class NationalNfseErrorResponse : NationalNfseResponse
+{
+    public List<MensagemProcessamento> Erros { get; set; } = new();
 }
 
 public enum TipoAmbiente
 {
     Producao = 1,
     Homologacao = 2
+}
+
+public abstract class NationalNfseResponse
+{
+    public TipoAmbiente TipoAmbiente { get; set; }
+    public string VersaoAplicativo { get; set; } = null!;
+    public DateTime DataHoraProcessamento { get; set; }
+    public string IdDps { get; set; } = null!;
+}
+
+public class MensagemProcessamento
+{
+    public string Mensagem { get; set; } = null!;
+    public string Codigo { get; set; } = null!;
+    public string Descricao { get; set; } = null!;
+    public string Complemento { get; set; } = null!;
 }
