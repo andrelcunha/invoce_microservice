@@ -45,7 +45,7 @@ public static class ApiClientConfig
             };
 
             InitializeIpmApiClient(services, options);
-            InitializeNationalApiClient(services, options);
+            InitializeNationalApiClient(services);
         }
         else
         {
@@ -76,21 +76,13 @@ public static class ApiClientConfig
         });
     }
 
-    private static void InitializeNationalApiClient(IServiceCollection services, ApiClientOptions options)
+    private static void InitializeNationalApiClient(IServiceCollection services)
     {
-        services.AddHttpClient<IApiClient, NationalApiClient>()
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-            {
-                UseCookies = false, // Manual cookie management via CookieContainer
-                AllowAutoRedirect = false // Per integration guide, avoid redirects
-            });
-
         services.AddScoped<IApiClient>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<NationalApiClient>>();
             var credentialsRepo = sp.GetRequiredService<IPortalCredentialsRepository>();
-
-            return new NationalApiClient(logger, options, credentialsRepo);
+            return new NationalApiClient(logger, credentialsRepo);
         });
     }
 }

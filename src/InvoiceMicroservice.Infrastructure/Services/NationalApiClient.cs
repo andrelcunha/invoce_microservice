@@ -21,7 +21,6 @@ public class NationalApiClient : IApiClient
 
     public NationalApiClient(
         ILogger<NationalApiClient> logger,
-        ApiClientOptions options,
         IPortalCredentialsRepository credentialsRepo)
     {
         _logger = logger;
@@ -50,20 +49,21 @@ public class NationalApiClient : IApiClient
         handler.ServerCertificateCustomValidationCallback =
             (message, cert, chain, errors) =>
             {
-                if (isTestMode && errors == SslPolicyErrors.None)
-                    return true;
-                if (!isTestMode && errors == SslPolicyErrors.RemoteCertificateNameMismatch)
-                {
-                    _logger.LogWarning("Accepting test environment certificate with name mismatch");
-                    return true;
-                }
-                return errors == SslPolicyErrors.None;
-            };
+            // In test mode, accept any certificate issues
+            if (isTestMode)
+            {
+                if (errors != SslPolicyErrors.None)
+                    _logger.LogWarning("Test mode: accepting certificate with errors: {Errors}", errors);
+                return true;
+            }
+            // In production, only accept valid certificates
+            return errors == SslPolicyErrors.None;
+        };
 
         using var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri(credentials.ApiBaseUrl),
-            Timeout = TimeSpan.FromSeconds(60)
+            Timeout = TimeSpan.FromSeconds(120)
         };
 
         var dpsXmlGZipB64 = GZipAndBase64Encode(xml);
@@ -76,10 +76,13 @@ public class NationalApiClient : IApiClient
         var jsonContent = JsonSerializer.Serialize(requestBody);
         using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-        _logger.LogDebug(
-            "Submitting DPS to National API - CNPJ: {IssuerCnpj}, TestMode: {TestMode}",
-            issuerCnpj,
-            isTestMode);
+        var endpoint = "/SefinNacional/nfse";
+        var apiUrl = new Uri(httpClient.BaseAddress!, endpoint);
+        _logger.LogInformation(
+        "Submitting DPS to National API - CNPJ: {IssuerCnpj}, TestMode: {TestMode}, URL: {ApiUrl}",
+        issuerCnpj,
+        isTestMode,
+        apiUrl);
         
         if (isTestMode)
         {
@@ -88,20 +91,43 @@ public class NationalApiClient : IApiClient
             Directory.CreateDirectory(outputDirectory);
             await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"dpsXmlGZipB64-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.txt"), dpsXmlGZipB64);
             await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"finalXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml"), xml);
-            // return new NfseSubmissionResult
-            // {
-            //     Success = false,
-            //     Messages = [$"API client GZIP + Base64 encoding demo mode - not sending request."]
-            // };
         }
 
         try
         {
-            var response = await httpClient.PostAsync("/nfse", content, cancellationToken);
+            var response = await httpClient.PostAsync(endpoint, content, cancellationToken);
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogInformation(
+                "Sending DPS submission request to National API at {ApiUrl}",
+                apiUrl);
 
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    try 
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<NationalNfseSubmissionResponse>(responseContent);
+                        if (errorResponse != null && errorResponse.Alertas.Count > 0)
+                        {
+                            _logger.LogWarning(
+                                "National API returned alerts: {Alerts}",
+                                string.Join(", ", errorResponse.Alertas));
+                        }
+                        return new NfseSubmissionResult
+                        {
+                            Success = false,
+                            Protocol = null,
+                            Messages = errorResponse?.Erros.Select(e => $"{e.Codigo}: {e.Descricao}").ToList() ?? new List<string>(),
+                            RawResponse = responseContent,
+                        };
+                    }
+                    catch (JsonException)
+                    {
+                        throw new HttpRequestException(
+                            $"National API returned {response.StatusCode}: {responseContent}");
+                    }
+                }
                 _logger.LogError(
                     "National API returned error status {StatusCode}: {Response}",
                     response.StatusCode,
@@ -212,6 +238,13 @@ public class NationalNfseSubmissionResponse
     public string ChaveAcesso { get; set; } = null!;
     public string nfseXmlGZipB64 { get; set; } = null!;
     public List<string> Alertas { get; set; } = new();
+    public List<Erro> Erros { get; set; } = new();
+
+    public class Erro
+    {
+        public string Codigo { get; set; } = null!;
+        public string Descricao { get; set; } = null!;
+    }
 }
 
 public enum TipoAmbiente
