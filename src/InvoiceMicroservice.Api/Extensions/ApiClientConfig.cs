@@ -87,12 +87,10 @@ public static class ApiClientConfig
 
         services.AddScoped<IApiClient>(sp =>
         {
-            var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-            var httpClient = httpClientFactory.CreateClient(nameof(NationalApiClient));
             var logger = sp.GetRequiredService<ILogger<NationalApiClient>>();
             var credentialsRepo = sp.GetRequiredService<IPortalCredentialsRepository>();
 
-            return new NationalApiClient(httpClient, logger, options, credentialsRepo);
+            return new NationalApiClient(logger, options, credentialsRepo);
         });
     }
 }

@@ -1,13 +1,9 @@
 using System.IO.Compression;
 using System.Net;
-using System.Net.Http.Headers;
+using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
-using System.Security.Cryptography.Xml;
 using System.Text;
 using System.Text.Json;
-using System.Xml;
-using System.Xml.Linq;
-using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -19,34 +15,17 @@ namespace InvoiceMicroservice.Infrastructure.Services;
 /// </summary>
 public class NationalApiClient : IApiClient
 {
-    private readonly HttpClient _httpClient;
     private readonly ILogger<NationalApiClient> _logger;
     private readonly IPortalCredentialsRepository _credentialsRepo;
-    private readonly ApiClientOptions _options;
 
-    private readonly CookieContainer _cookieContainer;
 
     public NationalApiClient(
-        HttpClient httpClient,
         ILogger<NationalApiClient> logger,
         ApiClientOptions options,
         IPortalCredentialsRepository credentialsRepo)
     {
-        _options = options;
-        _httpClient = httpClient;
         _logger = logger;
         _credentialsRepo = credentialsRepo;
-        _cookieContainer = new CookieContainer();
-    }
-
-    private void ConfigureHttpClient(PortalCredentials credentials)
-    {
-        _httpClient.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
-
-        // Basic Authentication
-        var authBytes = Encoding.UTF8.GetBytes($"{credentials.Username}:{credentials.PasswordHash}");
-        var authHeader = Convert.ToBase64String(authBytes);
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
     }
 
     public async Task<NfseSubmissionResult> SubmitInvoiceAsync(
@@ -55,313 +34,188 @@ public class NationalApiClient : IApiClient
         bool isTestMode = true,
         CancellationToken cancellationToken = default)
     {
-        var attempt = 0;
-        Exception? lastException = null;
-
-        if (string.IsNullOrEmpty(issuerCnpj))
-        {
-            return new NfseSubmissionResult
-            {
-                Success = false,
-                Messages = new List<string> { "Cannot extract issuer CNPJ from XML" }
-            };
-        }
-
         var credentials = await _credentialsRepo.GetByIssuerCnpjAsync(issuerCnpj, cancellationToken);
         if (credentials == null)
-        {
-            return new NfseSubmissionResult
+            throw new InvalidOperationException($"No credentials found for issuer CNPJ {issuerCnpj}");
+
+        // Load certificate for client authentication
+        var cert = X509CertificateLoader.LoadPkcs12(
+            credentials.CertificateData!,
+            credentials.CertificatePasswordHash!,
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
+
+        var handler = new HttpClientHandler();
+        handler.ClientCertificates.Add(cert);
+
+        handler.ServerCertificateCustomValidationCallback =
+            (message, cert, chain, errors) =>
             {
-                Success = false,
-                Messages = new List<string> { $"No IPM credentials configured for CNPJ {issuerCnpj}" }
+                if (isTestMode && errors == SslPolicyErrors.None)
+                    return true;
+                if (!isTestMode && errors == SslPolicyErrors.RemoteCertificateNameMismatch)
+                {
+                    _logger.LogWarning("Accepting test environment certificate with name mismatch");
+                    return true;
+                }
+                return errors == SslPolicyErrors.None;
             };
-        }
-        ConfigureHttpClient(credentials);
 
-
-        while (attempt < _options.RetryAttempts)
+        using var httpClient = new HttpClient(handler)
         {
-            attempt++;
-
-            try
-            {
-                _logger.LogInformation(
-                    "Submitting invoice (attempt {Attempt}/{MaxAttempts}, testMode: {TestMode})",
-                    attempt,
-                    _options.RetryAttempts,
-                    isTestMode);
-
-                // Compress
-                var dpsXmlGZipB64 = CompressXmlToBase64(xml);
-                var json =  JsonSerializer.Serialize(new { dpsXmlGZipB64 = dpsXmlGZipB64 });
-
-
-                if (isTestMode)
-                {
-                    // saving dpsXmlGZipB64 to file for debugging
-                    var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "ipm-xml-output");
-                    Directory.CreateDirectory(outputDirectory);
-                    await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"dpsXmlGZipB64-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.txt"), dpsXmlGZipB64);
-                    await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"finalXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml"), xml);
-                    return new NfseSubmissionResult
-                    {
-                        Success = false,
-                        Messages = [$"API client GZIP + Base64 encoding demo mode - not sending request."]
-                    };
-                }
-                // Build multipart/form-data request
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var xmlContent = new ByteArrayContent(Encoding.UTF8.GetBytes(xml));
-                xmlContent.Headers.ContentType = new MediaTypeHeaderValue("text/xml");
-
-                // Include cookies from previous session
-                var baseUrl = credentials.ApiBaseUrl;
-                var request = new HttpRequestMessage(HttpMethod.Post, baseUrl)
-                {
-                    Content = content
-                };
-                AddCookiesToRequest(request, baseUrl);
-
-                // Send request
-                var response = await _httpClient.SendAsync(request, cancellationToken);
-
-                // Capture cookies for subsequent requests
-                CaptureCookiesFromResponse(response, baseUrl);
-
-                // Read response body
-                var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
-
-                _logger.LogDebug("National API response (HTTP {StatusCode}): {ResponseXml}",
-                    (int)response.StatusCode,
-                    responseXml);
-
-                // Parse response (success determined by XML content, not HTTP status)
-                return ParseResponse(responseXml);
-            }
-            catch (TaskCanceledException ex)
-            {
-                lastException = ex;
-                _logger.LogWarning(
-                    ex,
-                    "National API request timeout (attempt {Attempt}/{MaxAttempts})",
-                    attempt,
-                    _options.RetryAttempts);
-
-                if (attempt < _options.RetryAttempts)
-                {
-                    var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
-                    await Task.Delay(delay, cancellationToken);
-                }
-            }
-            catch (HttpRequestException ex)
-            {
-                lastException = ex;
-                _logger.LogWarning(
-                    ex,
-                    "National API request failed (attempt {Attempt}/{MaxAttempts})",
-                    attempt,
-                    _options.RetryAttempts);
-
-                if (attempt < _options.RetryAttempts)
-                {
-                    var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
-                    await Task.Delay(delay, cancellationToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                lastException = ex;
-                _logger.LogError(
-                    ex,
-                    "Unexpected error submitting invoice to National API (attempt {Attempt}/{MaxAttempts})",
-                    attempt,
-                    _options.RetryAttempts);
-
-                // Don't retry on unexpected errors
-                break;
-            }
-        }
-
-        // All retries exhausted
-        return new NfseSubmissionResult
-        {
-            Success = false,
-            Messages = new List<string>
-            {
-                $"Failed after {attempt} attempts: {lastException?.Message ?? "Unknown error"}"
-            }
+            BaseAddress = new Uri(credentials.ApiBaseUrl),
+            Timeout = TimeSpan.FromSeconds(60)
         };
-    }
 
-    // private static string? GetIssuerCnpjFromXml(string xml)
-    // {
-    //     var doc = XDocument.Parse(xml);
-    //     var issuerCnpj = doc.Root?.Element("prestador")?.Element("cpfcnpj")?.Value;
-    //     return issuerCnpj;
-    // }
+        var dpsXmlGZipB64 = GZipAndBase64Encode(xml);
 
-    public async Task<InvoiceQueryResult> QueryInvoiceAsync(
-        string protocol,
-        CancellationToken cancellationToken = default)
-    {
-        _logger.LogWarning("QueryInvoiceAsync not implemented for National API. Protocol: {Protocol}", protocol);
-
-        return await Task.FromResult(new InvoiceQueryResult
+        var requestBody = new
         {
-            Found = false,
-            Status = "Query operation not available in current National API implementation"
-        });
-    }
+            dpsXmlGZipB64
+        };
 
-    public async Task<InvoiceCancellationResult> CancelInvoiceAsync(
-        string invoiceNumber,
-        string cancellationReason,
-        CancellationToken cancellationToken = default)
-    {
-        _logger.LogWarning(
-            "CancelInvoiceAsync not implemented for National API. Invoice: {InvoiceNumber}, Reason: {Reason}",
-            invoiceNumber,
-            cancellationReason);
+        var jsonContent = JsonSerializer.Serialize(requestBody);
+        using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-        return await Task.FromResult(new InvoiceCancellationResult
+        _logger.LogDebug(
+            "Submitting DPS to National API - CNPJ: {IssuerCnpj}, TestMode: {TestMode}",
+            issuerCnpj,
+            isTestMode);
+        
+        if (isTestMode)
         {
-            Success = false,
-            Messages = new List<string> { "Cancellation operation not available in current National API implementation" }
-        });
-    }
+            // saving dpsXmlGZipB64 to file for debugging
+            var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "national-xml-output");
+            Directory.CreateDirectory(outputDirectory);
+            await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"dpsXmlGZipB64-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.txt"), dpsXmlGZipB64);
+            await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"finalXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml"), xml);
+            // return new NfseSubmissionResult
+            // {
+            //     Success = false,
+            //     Messages = [$"API client GZIP + Base64 encoding demo mode - not sending request."]
+            // };
+        }
 
-    private NfseSubmissionResult ParseResponse(string responseXml)
-    {
         try
         {
-            var doc = XDocument.Parse(responseXml);
-            var root = doc.Root;
+            var response = await httpClient.PostAsync("/nfse", content, cancellationToken);
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            if (root == null)
+            if (!response.IsSuccessStatusCode)
             {
-                return new NfseSubmissionResult
-                {
-                    Success = false,
-                    Messages = new List<string> { "Empty response from National API" },
-                    RawResponse = responseXml
-                };
+                _logger.LogError(
+                    "National API returned error status {StatusCode}: {Response}",
+                    response.StatusCode,
+                    responseContent);
+                throw new HttpRequestException(
+                    $"National API returned {response.StatusCode}: {responseContent}");
             }
 
-            // Parse <retorno> structure per integration guide
-            var sucessoStr = root.Element("sucesso")?.Value ?? "false";
-            var mensagem = root.Element("mensagem")?.Value ?? "";
-            var numeroNfse = root.Element("numero_nfse")?.Value;
-            var codVerificador = root.Element("cod_verificador_autenticidade")?.Value;
-            var linkPdf = root.Element("link_pdf")?.Value;
+            _logger.LogInformation(
+                "DPS submitted successfully - Response: {Response}",
+                responseContent);
 
-            var success = sucessoStr.Equals("true", StringComparison.OrdinalIgnoreCase);
-
-            var messages = new List<string>();
-            if (!string.IsNullOrEmpty(mensagem))
+            var submissionResponse = JsonSerializer.Deserialize<NationalNfseSubmissionResponse>(responseContent);
+            if (submissionResponse == null)
             {
-                messages.Add(mensagem);
+                _logger.LogError("Failed to deserialize National API response: {Response}", responseContent);
+                throw new InvalidOperationException("Invalid response from National API");
             }
-
-            // Check for additional error/warning messages
-            foreach (var msgElement in root.Descendants("erro").Concat(root.Descendants("aviso")))
+            if (submissionResponse.Alertas.Count > 0)
             {
-                var code = msgElement.Element("codigo")?.Value;
-                var desc = msgElement.Element("descricao")?.Value ?? msgElement.Value;
-                messages.Add($"[{code}] {desc}");
+                _logger.LogWarning(
+                    "National API returned alerts: {Alerts}",
+                    string.Join(", ", submissionResponse.Alertas));
             }
+            if (string.IsNullOrEmpty(submissionResponse.ChaveAcesso))
+            {
+                _logger.LogError("National API response missing ChaveAcesso: {Response}", responseContent);
+                throw new InvalidOperationException("Invalid response from National API: missing ChaveAcesso");
+            }
+            if (string.IsNullOrEmpty(submissionResponse.nfseXmlGZipB64))
+            {
+                _logger.LogError("National API response missing nfseXmlGZipB64: {Response}", responseContent);
+                throw new InvalidOperationException("Invalid response from National API: missing nfseXmlGZipB64");
+            }
+            var nfseXml = Base64DecodeAndGunzip(submissionResponse.nfseXmlGZipB64);
+            await WriteToFileAsync(issuerCnpj, nfseXml);
 
             var result = new NfseSubmissionResult
             {
-                Success = success,
-                Protocol = numeroNfse, // IPM uses numero_nfse as protocol/identifier
-                InvoiceNumber = numeroNfse,
-                VerificationCode = codVerificador,
-                PdfUrl = linkPdf,
-                Messages = messages,
-                RawResponse = responseXml
+                Success = true,
+                Protocol = null // Parse protocol from responseContent if available
             };
-
-            if (success)
-            {
-                _logger.LogInformation(
-                    "National API submission successful. Invoice: {InvoiceNumber}, Verification: {VerificationCode}",
-                    numeroNfse,
-                    codVerificador);
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "National API submission failed. Messages: {Messages}",
-                    string.Join("; ", messages));
-            }
 
             return result;
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Failed to parse National API response: {ResponseXml}", responseXml);
-
-            return new NfseSubmissionResult
-            {
-                Success = false,
-                Messages = new List<string> { $"Response parsing error: {ex.Message}" },
-                RawResponse = responseXml
-            };
+            _logger.LogError(ex, "HTTP error submitting DPS to National API");
+            throw;
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "Timeout submitting DPS to National API");
+            throw new TimeoutException("Request to National API timed out", ex);
         }
     }
 
-    private void AddCookiesToRequest(HttpRequestMessage request, string baseUrl)
+    public static string GZipAndBase64Encode(string xml)
     {
-        var cookies = _cookieContainer.GetCookies(new Uri(baseUrl));
-        if (cookies.Count > 0)
-        {
-            var cookieHeader = string.Join("; ", cookies.Cast<Cookie>().Select(c => $"{c.Name}={c.Value}"));
-            request.Headers.Add("Cookie", cookieHeader);
-
-            _logger.LogDebug("Including cookies in request: {CookieHeader}", cookieHeader);
-        }
-    }
-
-    private void CaptureCookiesFromResponse(HttpResponseMessage response, string baseUrl)
-    {
-        if (response.Headers.TryGetValues("Set-Cookie", out var setCookieHeaders))
-        {
-            foreach (var header in setCookieHeaders)
-            {
-                _cookieContainer.SetCookies(new Uri(baseUrl), header);
-                _logger.LogDebug("Captured cookie: {SetCookieHeader}", header);
-            }
-        }
-    }
-
-        /// <summary>
-    /// Compacta uma string XML em GZIP e retorna os bytes.
-    /// </summary>
-    public static byte[] CompressToGzip(string xml) 
-    { 
         byte[] xmlBytes = Encoding.UTF8.GetBytes(xml);
         using var outputStream = new MemoryStream();
         using (var gzipStream = new GZipStream(outputStream, CompressionMode.Compress))
         {
             gzipStream.Write(xmlBytes, 0, xmlBytes.Length);
         }
-        return outputStream.ToArray();
+        var compressedBytes = outputStream.ToArray();
+        return Convert.ToBase64String(compressedBytes);
     }
 
-        /// <summary>
-    /// Converte bytes GZIP para base64.
-    /// </summary>
-    public static string ToBase64(byte[] gzipBytes)
+
+    // create a method to decode base64 and gunzip
+    public static string Base64DecodeAndGunzip(string base64Gzip)
     {
-        return Convert.ToBase64String(gzipBytes);
+        byte[] compressedBytes = Convert.FromBase64String(base64Gzip);
+        using var inputStream = new MemoryStream(compressedBytes);
+        using var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress);
+        using var outputStream = new MemoryStream();
+        gzipStream.CopyTo(outputStream);
+        byte[] decompressedBytes = outputStream.ToArray();
+        return Encoding.UTF8.GetString(decompressedBytes);
     }
 
-    /// <summary>
-    /// Compacta uma string XML em GZIP e retorna a string base64.
-    /// </summary>
-    public static string CompressXmlToBase64(string xml)
-    { 
-        var gzipBytes = CompressToGzip(xml);
-        return ToBase64(gzipBytes);
+    public Task<InvoiceQueryResult> QueryInvoiceAsync(string protocol, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
     }
+
+    public Task<InvoiceCancellationResult> CancelInvoiceAsync(string invoiceNumber, string cancellationReason, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    private async Task WriteToFileAsync(string issuerCnpj, string xml)
+    {
+        // saving nfseXmlGZipB64 to file for debugging
+        var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "national-xml-output");
+        Directory.CreateDirectory(outputDirectory);
+        await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"nfseXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml"), xml);
+    }
+}
+
+public class NationalNfseSubmissionResponse
+{
+    public TipoAmbiente TipoAmbiente { get; set; }
+    public string VersaoAplicativo { get; set; } = null!;
+    public DateTime DataHoraProcessamento { get; set; }
+    public string IdDps { get; set; } = null!;
+    public string ChaveAcesso { get; set; } = null!;
+    public string nfseXmlGZipB64 { get; set; } = null!;
+    public List<string> Alertas { get; set; } = new();
+}
+
+public enum TipoAmbiente
+{
+    Producao = 1,
+    Homologacao = 2
 }
