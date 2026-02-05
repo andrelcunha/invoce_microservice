@@ -1,6 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
-using InvoiceMicroservice.Domain.Entities;
+﻿using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.ValueObjects;
+using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceMicroservice.Infrastructure.Data;
 
@@ -10,7 +10,7 @@ public class InvoiceDbContext : DbContext
 
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<ServiceTypeTaxMapping> ServiceTypeTaxMappings => Set<ServiceTypeTaxMapping>();
-    public DbSet<Municipality> Municipalities => Set<Municipality>();
+    public DbSet<IssuerEntity> Issuers => Set<IssuerEntity>();
     public DbSet<PortalCredentials> PortalCredentials => Set<PortalCredentials>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -170,74 +170,132 @@ public class InvoiceDbContext : DbContext
             entity.HasIndex(e => e.Uf);
         });
 
+        // IssuerEntity configuration
+        modelBuilder.Entity<IssuerEntity>(entity =>
+        {
+            entity.ToTable("issuers");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id")
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.Cnpj)
+                .HasColumnName("cnpj")
+                .HasMaxLength(14)
+                .IsRequired()
+                .HasConversion(
+                    v => v.Value,
+                    v => new Cnpj(v));
+
+            entity.HasIndex(e => e.Cnpj).IsUnique();
+
+            entity.Property(e => e.MunicipalInscription)
+                .HasColumnName("municipal_inscription")
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(e => e.TradeName)
+                .HasColumnName("trade_name")
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(e => e.LegalName)
+                .HasColumnName("legal_name")
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(e => e.Cnae)
+                .HasColumnName("cnae")
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(e => e.AddressJson)
+                .HasColumnName("address")
+                .HasColumnType("jsonb")
+                .IsRequired();
+
+            entity.Property(e => e.RegimeTributario)
+                .HasColumnName("regime_tributario")
+                .HasConversion<int>();
+
+            entity.Property(e => e.SubRegimeTributario)
+                .HasColumnName("sub_regime_tributario")
+                .HasConversion<int>();
+
+            entity.Property(e => e.IsActive)
+                .HasColumnName("is_active")
+                .HasDefaultValue(true);
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("now() at time zone 'utc'");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at")
+                .HasDefaultValueSql("now() at time zone 'utc'");
+
+            entity.HasMany(e => e.PortalCredentials)
+                .WithOne(pc => pc.Issuer)
+                .HasForeignKey(pc => pc.IssuerId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // PortalCredentials configuration
         modelBuilder.Entity<PortalCredentials>(entity =>
         {
             entity.ToTable("portal_credentials");
             entity.HasKey(e => e.Id);
-            
-            entity.Property(e => e.IssuerCnpj)
-                .HasColumnName("issuer_cnpj")
-                .HasMaxLength(14)
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id")
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.IssuerId)
+                .HasColumnName("issuer_id")
                 .IsRequired();
-            
-            entity.Property(e => e.MunicipalityId)
-                .HasColumnName("municipality_id")
-                .IsRequired();
-            
+
             entity.Property(e => e.PortalType)
                 .HasColumnName("portal_type")
-                .HasMaxLength(50)
+                .HasConversion<int>()
                 .IsRequired();
-            
-            entity.Property(e => e.ApiBaseUrl)
-                .HasColumnName("api_base_url")
-                .HasMaxLength(500)
-                .IsRequired();
-            
+
             entity.Property(e => e.Username)
                 .HasColumnName("username")
-                .HasMaxLength(100)
+                .HasMaxLength(200)
                 .IsRequired();
-            
+
             entity.Property(e => e.PasswordHash)
                 .HasColumnName("password_hash")
                 .HasMaxLength(500)
                 .IsRequired();
-            
+
             entity.Property(e => e.RequiresSignature)
-                .HasColumnName("requires_signature");
-            
+                .HasColumnName("requires_signature")
+                .HasDefaultValue(false);
+
             entity.Property(e => e.CertificateData)
-                .HasColumnName("certificate_data");
-            
+                .HasColumnName("certificate_data")
+                .HasColumnType("bytea");
+
             entity.Property(e => e.CertificatePasswordHash)
                 .HasColumnName("certificate_password_hash")
                 .HasMaxLength(500);
-            
+
             entity.Property(e => e.IsActive)
                 .HasColumnName("is_active")
                 .HasDefaultValue(true);
-            
+
             entity.Property(e => e.CreatedAt)
                 .HasColumnName("created_at")
                 .HasDefaultValueSql("now() at time zone 'utc'");
-            
+
             entity.Property(e => e.UpdatedAt)
                 .HasColumnName("updated_at")
                 .HasDefaultValueSql("now() at time zone 'utc'");
-            
-            // Foreign key relationship
-            entity.HasOne(e => e.Municipality)
-                .WithMany()
-                .HasForeignKey(e => e.MunicipalityId)
-                .OnDelete(DeleteBehavior.Restrict);
-            
-            // Unique constraint: one credential set per CNPJ
-            entity.HasIndex(e => e.IssuerCnpj).IsUnique();
-            
-            // Index for quick portal type lookups
-            entity.HasIndex(e => e.PortalType);
+
+            // Composite index for efficient lookup
+            entity.HasIndex(e => new { e.IssuerId, e.PortalType, e.IsActive });
         });
     }
 }

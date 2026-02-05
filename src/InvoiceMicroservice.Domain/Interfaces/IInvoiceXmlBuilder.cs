@@ -24,9 +24,3 @@ public interface IInvoiceXmlBuilder
 
     PortalType GetPortalType();
 }
-
-public enum PortalType
-{
-    IPM,
-    Nacional
-}

@@ -7,63 +7,26 @@ namespace InvoiceMicroservice.Domain.Entities;
 public class PortalCredentials
 {
     public Guid Id { get; private set; }
+    public Guid IssuerId { get; private set; }
+    public IssuerEntity Issuer { get; private set; } = null!; // Navigation property
     
-    /// <summary>
-    /// Issuer CNPJ (unique identifier for the company).
-    /// </summary>
-    public string IssuerCnpj { get; private set; } = string.Empty;
-    
-    /// <summary>
-    /// Reference to the municipality where this issuer operates.
-    /// Determines TOM code and geographic data for XML generation.
-    /// </summary>
-    public int MunicipalityId { get; private set; }
-    public Municipality Municipality { get; private set; } = null!; // Navigation property
-    
-    /// <summary>
-    /// NFS-e portal type for this credential.
-    /// Values: "IPM", "Nacional", "Betha", "GINFES", "WebISS", etc.
-    /// Determines which XML builder and submission client to use.
-    /// </summary>
-    public string PortalType { get; private set; } = string.Empty;
-    
-    /// <summary>
-    /// Portal API base URL (may differ per municipality even with same portal type).
-    /// Example IPM: https://concordia.atende.net/?pg=rest&service=WNERestServiceNFSe&cidade=padrao
-    /// Example Nacional: https://nfse.portoalegre.rs.gov.br/ws/nfse.asmx
-    /// </summary>
-    public string ApiBaseUrl { get; private set; } = string.Empty;
-    
-    /// <summary>
-    /// Portal username (Basic Auth or similar).
-    /// </summary>
+    public PortalType PortalType { get; set; }
+
+    // ApiBaseUrl shall be set via appsettings. 
+    // We will create a configuration for each portal type to store the base URL and endpoints. 
+    // public string ApiBaseUrl { get; private set; } = string.Empty; 
+
     public string Username { get; private set; } = string.Empty;
     
-    /// <summary>
-    /// Portal password (encrypted at rest).
-    /// </summary>
     public string PasswordHash { get; private set; } = string.Empty;
     
-    /// <summary>
-    /// Whether digital signature is required for this portal/municipality.
-    /// </summary>
     public bool RequiresSignature { get; private set; }
     
-    /// <summary>
-    /// PFX certificate bytes (encrypted at rest).
-    /// Null if signature not required.
-    /// </summary>
     public byte[]? CertificateData { get; private set; }
     
-    /// <summary>
-    /// Certificate password (encrypted at rest).
-    /// </summary>
     public string? CertificatePasswordHash { get; private set; }
     
-    /// <summary>
-    /// Whether these credentials are active.
-    /// Allows soft-delete or temporary disable.
-    /// </summary>
+
     public bool IsActive { get; private set; } = true;
     
     public DateTime CreatedAt { get; private set; }
@@ -72,10 +35,8 @@ public class PortalCredentials
     private PortalCredentials() { }
 
     public static PortalCredentials Create(
-        string issuerCnpj,
-        int municipalityId,
-        string portalType,
-        string apiBaseUrl,
+        Guid issuerId,        
+        PortalType portalType,
         string username,
         string passwordHash,
         bool requiresSignature = false,
@@ -85,10 +46,8 @@ public class PortalCredentials
         return new PortalCredentials
         {
             Id = Guid.NewGuid(),
-            IssuerCnpj = issuerCnpj,
-            MunicipalityId = municipalityId,
-            PortalType = portalType.ToUpperInvariant(),
-            ApiBaseUrl = apiBaseUrl,
+            IssuerId = issuerId,
+            PortalType = portalType,
             Username = username,
             PasswordHash = passwordHash,
             RequiresSignature = requiresSignature,
@@ -100,14 +59,12 @@ public class PortalCredentials
     }
 
     public void UpdateCredentials(
-        string apiBaseUrl,
         string username,
         string passwordHash,
         bool requiresSignature,
         byte[]? certificateData,
         string? certificatePasswordHash)
     {
-        ApiBaseUrl = apiBaseUrl;
         Username = username;
         PasswordHash = passwordHash;
         RequiresSignature = requiresSignature;
@@ -121,4 +78,10 @@ public class PortalCredentials
         IsActive = false;
         UpdatedAt = DateTime.UtcNow;
     }
+}
+
+public enum PortalType
+{
+    IPM = 1,
+    Nacional = 2
 }

@@ -1,5 +1,6 @@
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
+using InvoiceMicroservice.Domain.ValueObjects;
 using InvoiceMicroservice.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -25,10 +26,11 @@ public class PortalCredentialsRepository : IPortalCredentialsRepository
         string issuerCnpj, 
         CancellationToken cancellationToken = default)
     {
+        var cnpj = new Cnpj(issuerCnpj);
         return await _context.PortalCredentials
-            .Include(c => c.Municipality) // Eager load municipality for factory
             .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.IssuerCnpj == issuerCnpj && c.IsActive, cancellationToken);
+            .Include(c => c.Issuer)
+            .FirstOrDefaultAsync(c => c.Issuer.Cnpj == cnpj && c.IsActive, cancellationToken);
     }
 
     public async Task<IEnumerable<PortalCredentials>> GetAllAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
@@ -40,7 +42,7 @@ public class PortalCredentialsRepository : IPortalCredentialsRepository
             query = query.Where(c => c.IsActive);
         }
         
-        return await query.OrderBy(c => c.IssuerCnpj).ToListAsync(cancellationToken);
+        return await query.OrderBy(c => c.Issuer.Cnpj).ToListAsync(cancellationToken);
     }
 
     public async Task AddAsync(PortalCredentials credentials, CancellationToken cancellationToken = default)
@@ -57,7 +59,7 @@ public class PortalCredentialsRepository : IPortalCredentialsRepository
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var credentials = await _context.PortalCredentials.FindAsync(new object[] { id }, cancellationToken);
+        var credentials = await _context.PortalCredentials.FindAsync([id], cancellationToken);
         if (credentials is not null)
         {
             credentials.Deactivate();

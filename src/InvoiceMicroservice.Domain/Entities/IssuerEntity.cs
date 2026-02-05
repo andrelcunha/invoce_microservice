@@ -1,11 +1,11 @@
-using InvoiceMicroservice.Domain.Enums;
+using InvoiceMicroservice.Domain.ValueObjects;
 
 namespace InvoiceMicroservice.Domain.Entities;
 
 public class IssuerEntity
 {
-    Guid Id { get; set; }
-    public string Cnpj { get; set; } = null!;
+    public Guid Id { get; set; }
+    public Cnpj Cnpj { get; set; } = null!;
     public string MunicipalInscription { get; set; } = null!;
     public string TradeName { get; set; } = null!;
     public string LegalName { get; set; } = null!;
@@ -18,6 +18,6 @@ public class IssuerEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    public ICollection<PortalCredentials> PortalCredentials { get; set; } = [];
+    public ICollection<PortalCredentials> PortalCredentials { get; set; } = []; // should be one-to-one, because the issuer's municipality defines the portal credentials so there is no reason for an issuer to have more than one portal credentials
 }
 

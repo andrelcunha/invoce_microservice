@@ -1,8 +1,6 @@
 using InvoiceMicroservice.Domain.Entities;
-using InvoiceMicroservice.Domain.Enums;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Domain.ValueObjects;
-using InvoiceMicroservice.Infrastructure.Xml;
 using System.Text.Json;
 
 namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
@@ -10,13 +8,13 @@ namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
 public record EmitInvoiceCommand
 {
     public required string ClientId { get; init; }
+    public required string IssuerCnpj { get; init; }
     public required EmitInvoiceData Data { get; init; }
     public bool IsTestMode { get; init; } = true; // Default to test mode for safety
 }
 
 public record EmitInvoiceData
 {
-    public required Issuer Issuer { get; init; }
     public required Consumer Consumer { get; init; }
     public required string ServiceDescription { get; init; }
     public required decimal Amount { get; init; }
@@ -48,23 +46,33 @@ public class EmitInvoiceCommandHandler
     private readonly IInvoiceRepository _repository;
     private readonly IInvoiceXmlBuilderFactory _xmlBuilderFactory;
     private readonly IApiClient _apiClient;
-    
+    private readonly IIssuerRepository _issuerRepository;
 
     public EmitInvoiceCommandHandler(
         IInvoiceRepository repository, 
         IInvoiceXmlBuilderFactory xmlBuilderFactory,
-            IApiClient apiClient)
+            IApiClient apiClient,
+            IIssuerRepository issuerRepository)
     {
         _repository = repository;
         _xmlBuilderFactory = xmlBuilderFactory;
         _apiClient = apiClient;
+        _issuerRepository = issuerRepository;
     }
 
     public async Task<Guid> HandleAsync(EmitInvoiceCommand request, CancellationToken cancellationToken = default)
     {
-        var issuerCnpj = new Cnpj(request.Data.Issuer.Cnpj);
+        var issuerCnpj = new Cnpj(request.IssuerCnpj);
+
+        // fetch issuer from db
+        var issuer = await _issuerRepository.GetByCnpjAsync(issuerCnpj, cancellationToken)
+            ?? throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} not found.");
+
+        if (!issuer.IsActive)
+            throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} is inactive.");
         
-        var issuerJson = JsonSerializer.Serialize(request.Data.Issuer);
+        var issuerDto =  JsonSerializer.Deserialize<Issuer>(issuer.AddressJson);
+        var issuerJson = JsonSerializer.Serialize(issuerDto);
         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
 
         string ctsPisCofins = request.Data.PisCofinsCts.HasValue 
