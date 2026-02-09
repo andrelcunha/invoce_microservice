@@ -2,7 +2,7 @@ using InvoiceMicroservice.Domain.Enums;
 
 namespace InvoiceMicroservice.Domain.Entities;
 
-public class Issuer
+public class IssuerDto
 {
     public string Cnpj { get; set; } = null!;
     public string MunicipalInscription { get; set; } = null!;

@@ -50,7 +50,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
         }
     }
 
-    internal class IssuerValidator : AbstractValidator<Issuer>
+    internal class IssuerValidator : AbstractValidator<IssuerDto>
     {
         public IssuerValidator()
         {

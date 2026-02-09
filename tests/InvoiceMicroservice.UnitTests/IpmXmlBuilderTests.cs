@@ -426,7 +426,7 @@ public class IpmXmlBuilderTests
 
     private Invoice CreateSampleInvoice()
     {
-        var issuer = new Issuer
+        var issuer = new IssuerDto
         {
             Cnpj = "12.345.678/0001-95",
             Name = "Empresa Teste Ltda",
@@ -479,7 +479,7 @@ public class IpmXmlBuilderTests
 
     private Invoice CreateSampleInvoiceWithCpfConsumer()
     {
-        var issuer = new Issuer
+        var issuer = new IssuerDto
         {
             Cnpj = "12.345.678/0001-95",
             Name = "Empresa Teste Ltda",
@@ -527,7 +527,7 @@ public class IpmXmlBuilderTests
 
     private Invoice CreateInvoiceWithSpecialCharacters()
     {
-        var issuer = new Issuer
+        var issuer = new IssuerDto
         {
             Cnpj = "12.345.678/0001-95",
             Name = "Empresa <Test> & Cia",

@@ -29,7 +29,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 
     public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
-        var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;
+        var issuer = JsonSerializer.Deserialize<IssuerDto>(invoice.IssuerData)!;
         var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
 
         // Lookup service type codes - fallback to defaults if not found
@@ -328,7 +328,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return ibscbs;
     }
 
-    private async Task<XElement> BuildItemsAsync(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
+    private async Task<XElement> BuildItemsAsync(Invoice invoice, IssuerDto issuer, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
     {
         var itens = new XElement("itens");
         var lista = new XElement("lista");

@@ -45,7 +45,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
     public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
-        var issuer = JsonSerializer.Deserialize<Issuer>(invoice.IssuerData)!;
+        var issuer = JsonSerializer.Deserialize<IssuerDto>(invoice.IssuerData)!;
         _logger.LogInformation("Building XML for invoice {InvoiceId} issued by {IssuerCnpj}", invoice.Id, issuer.Cnpj);
         var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
         var issuer_cnpj = Helpers.StripDots(issuer.Cnpj);
@@ -88,7 +88,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return builder.ToString();
     }
 
-    private async Task<XElement> BuildInfDpsAsync(Invoice invoice, Issuer issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
+    private async Task<XElement> BuildInfDpsAsync(Invoice invoice, IssuerDto issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
         var codMun = await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct);
         var codMunToma = await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, ct);
@@ -122,7 +122,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return infDps;
     }
 
-    private XElement BuildDpsPrest(Issuer issuer, string codMun)
+    private XElement BuildDpsPrest(IssuerDto issuer, string codMun)
     {
         var prest = El("prest");
         var issuerDigits = Helpers.OnlyDigits(issuer.Cnpj);
@@ -176,7 +176,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return end;
     }
 
-    private static int EvaluateSimplesNacionalRegime(Issuer issuer)
+    private static int EvaluateSimplesNacionalRegime(IssuerDto issuer)
     {
         //Optante do Simples Nacional (1=Nao, 2= MEI, 3= ME/EPP)
         int opSimNac;
@@ -195,7 +195,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return opSimNac;
     }
 
-    private static int EvaluateRegEspTrib(Issuer issuer)
+    private static int EvaluateRegEspTrib(IssuerDto issuer)
     {
         // 0 - Nenhum; 
         //       - Se tribISSQN = [2,3,4] ou 
@@ -210,7 +210,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // 6 - Sociedade de Profissionais;
         return 0; // TODO: Implement logic if needed
     }
-    private static int EvaluateRegApTribSN(Issuer issuer)
+    private static int EvaluateRegApTribSN(IssuerDto issuer)
     {
         // TODO: 
         // Implement logic to evaluate Regime de Apuração do Simples Nacional based on issuer details
@@ -240,7 +240,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return tom;
     }
 
-    private async Task<XElement> BuildServAsync(Invoice invoice, Issuer issuer, ServiceTypeTaxCodes codes, CancellationToken ct)
+    private async Task<XElement> BuildServAsync(Invoice invoice, IssuerDto issuer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
         var servico = El("serv");
 
@@ -327,7 +327,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return valores;
     }
 
-    private async Task<XElement> BuildIbsCbsAsync(Invoice invoice, Issuer issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
+    private async Task<XElement> BuildIbsCbsAsync(Invoice invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
         var ibscbs = El("IBSCBS");
 

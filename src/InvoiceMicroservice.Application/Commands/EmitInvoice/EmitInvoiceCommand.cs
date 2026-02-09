@@ -71,7 +71,7 @@ public class EmitInvoiceCommandHandler
         if (!issuer.IsActive)
             throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} is inactive.");
         
-        var issuerDto =  JsonSerializer.Deserialize<Issuer>(issuer.AddressJson);
+        var issuerDto =  JsonSerializer.Deserialize<IssuerDto>(issuer.AddressJson);
         var issuerJson = JsonSerializer.Serialize(issuerDto);
         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
 
