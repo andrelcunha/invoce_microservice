@@ -18,6 +18,6 @@ public class IssuerEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    public ICollection<PortalCredentials> PortalCredentials { get; set; } = []; // should be one-to-one, because the issuer's municipality defines the portal credentials so there is no reason for an issuer to have more than one portal credentials
+    public PortalCredentials PortalCredentials { get; set; } = null!;
 }
 

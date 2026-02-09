@@ -235,10 +235,9 @@ public class InvoiceDbContext : DbContext
                 .HasColumnName("updated_at")
                 .HasDefaultValueSql("now() at time zone 'utc'");
 
-            entity.HasMany(e => e.PortalCredentials)
+            entity.HasOne(e => e.PortalCredentials)
                 .WithOne(pc => pc.Issuer)
-                .HasForeignKey(pc => pc.IssuerId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey<PortalCredentials>(pc => pc.IssuerId);
         });
 
         // PortalCredentials configuration
