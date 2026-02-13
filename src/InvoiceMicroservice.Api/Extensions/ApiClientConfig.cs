@@ -1,5 +1,7 @@
 using InvoiceMicroservice.Domain.Interfaces;
+using InvoiceMicroservice.Infrastructure.Configuration;
 using InvoiceMicroservice.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 
 namespace InvoiceMicroservice.Api.Extensions;
 
@@ -28,23 +30,7 @@ public static class ApiClientConfig
         }
         else if (ipmMode.Equals("Api", StringComparison.OrdinalIgnoreCase))
         {
-            // Real IPM API client
-            var options = new ApiClientOptions
-            {
-                // BaseUrl = configuration["IpmClient:ApiBaseUrl"] 
-                //     ?? throw new InvalidOperationException("IpmClient:ApiBaseUrl required when Mode=Api"),
-                // Username = configuration["IpmClient:Username"] 
-                //     ?? throw new InvalidOperationException("IpmClient:Username required when Mode=Api"),
-                // Password = configuration["IpmClient:Password"] 
-                //     ?? throw new InvalidOperationException("IpmClient:Password required when Mode=Api"),
-                TimeoutSeconds = int.Parse(configuration["IpmClient:TimeoutSeconds"] ?? "30"),
-                RetryAttempts = int.Parse(configuration["IpmClient:RetryAttempts"] ?? "3"),
-                // RequiresSignature = bool.Parse(configuration["IpmClient:RequiresSignature"] ?? "false"),
-                // CertificatePath = configuration["IpmClient:CertificatePath"],
-                // CertificatePassword = configuration["IpmClient:CertificatePassword"]
-            };
-
-            InitializeIpmApiClient(services, options);
+            InitializeIpmApiClient(services);
             InitializeNationalApiClient(services);
         }
         else
@@ -56,8 +42,9 @@ public static class ApiClientConfig
         return services;
     }
 
-    private static void InitializeIpmApiClient(IServiceCollection services, ApiClientOptions options)
+    private static void InitializeIpmApiClient(IServiceCollection services)
     {
+
         services.AddHttpClient<IApiClient, IpmApiClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
             {
@@ -71,6 +58,7 @@ public static class ApiClientConfig
             var httpClient = httpClientFactory.CreateClient(nameof(IpmApiClient));
             var logger = sp.GetRequiredService<ILogger<IpmApiClient>>();
             var credentialsRepo = sp.GetRequiredService<IPortalCredentialsRepository>();
+            var options = sp.GetRequiredService<IOptions<PortalConfigs>>();
 
             return new IpmApiClient(httpClient, logger, options, credentialsRepo);
         });
@@ -82,7 +70,8 @@ public static class ApiClientConfig
         {
             var logger = sp.GetRequiredService<ILogger<NationalApiClient>>();
             var credentialsRepo = sp.GetRequiredService<IPortalCredentialsRepository>();
-            return new NationalApiClient(logger, credentialsRepo);
+            var options = sp.GetRequiredService<IOptions<PortalConfigs>>();
+            return new NationalApiClient(logger, credentialsRepo, options);
         });
     }
 }

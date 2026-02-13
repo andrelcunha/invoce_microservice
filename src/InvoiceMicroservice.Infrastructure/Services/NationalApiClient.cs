@@ -4,8 +4,11 @@ using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
+using InvoiceMicroservice.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace InvoiceMicroservice.Infrastructure.Services;
 
@@ -17,14 +20,17 @@ public class NationalApiClient : IApiClient
 {
     private readonly ILogger<NationalApiClient> _logger;
     private readonly IPortalCredentialsRepository _credentialsRepo;
+    private readonly PortalConfigs _portalConfigs;
 
 
     public NationalApiClient(
         ILogger<NationalApiClient> logger,
-        IPortalCredentialsRepository credentialsRepo)
+        IPortalCredentialsRepository credentialsRepo,
+        IOptions<PortalConfigs> configs)
     {
         _logger = logger;
         _credentialsRepo = credentialsRepo;
+        _portalConfigs = configs.Value;
     }
 
     public async Task<NfseSubmissionResult> SubmitInvoiceAsync(
@@ -60,10 +66,16 @@ public class NationalApiClient : IApiClient
             return errors == SslPolicyErrors.None;
         };
 
+        var config = _portalConfigs.GetConfig(credentials.PortalType);
+        if (config == null)
+            throw new InvalidOperationException($"No portal configuration found for portal type {credentials.PortalType}");
+        
+        var baseUrl = config.ApiBaseUrl;
+
         using var httpClient = new HttpClient(handler)
         {
-            BaseAddress = new Uri(credentials.ApiBaseUrl),
-            Timeout = TimeSpan.FromSeconds(120)
+            BaseAddress = new Uri(baseUrl),
+            Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds)
         };
 
         var dpsXmlGZipB64 = GZipAndBase64Encode(xml);
@@ -76,7 +88,8 @@ public class NationalApiClient : IApiClient
         var jsonContent = JsonSerializer.Serialize(requestBody);
         using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-        var endpoint = "/SefinNacional/nfse";
+        // var endpoint = "/SefinNacional/nfse";
+        var endpoint = config.Endpoints.EmitInvoice;
         var apiUrl = new Uri(httpClient.BaseAddress!, endpoint);
         _logger.LogInformation(
         "Submitting DPS to National API - CNPJ: {IssuerCnpj}, TestMode: {TestMode}, URL: {ApiUrl}",
