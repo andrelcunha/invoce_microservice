@@ -1,6 +1,6 @@
 using InvoiceMicroservice.Domain.Entities;
 
-namespace InvoiceMicroservice.Application.Commands.RegisterIssuer;
+namespace InvoiceMicroservice.Application.Commands.Issuer;
 public record RegisterIssuerCommand
 {
     public required string Cnpj { get; init; }

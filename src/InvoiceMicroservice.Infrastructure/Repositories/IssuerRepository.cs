@@ -19,7 +19,7 @@ public class IssuerRepository : IIssuerRepository
     {
         return await _context.Issuers
             .AsNoTracking()
-            .Include(i => i.PortalCredentials.Where(pc => pc.IsActive))
+            .Include(i => i.PortalCredentials)
             .FirstOrDefaultAsync(i => i.Id == id, cancellationToken);
     }
 
@@ -27,7 +27,7 @@ public class IssuerRepository : IIssuerRepository
     {
         return await _context.Issuers
             .AsNoTracking()
-            .Include(i => i.PortalCredentials.Where(pc => pc.IsActive))
+            .Include(i => i.PortalCredentials)
             .FirstOrDefaultAsync(i => i.Cnpj == cnpj, cancellationToken);
     }
 
@@ -36,7 +36,7 @@ public class IssuerRepository : IIssuerRepository
         return await _context.Issuers
             .AsNoTracking()
             .Where(i => i.IsActive)
-            .Include(i => i.PortalCredentials.Where(pc => pc.IsActive))
+            .Include(i => i.PortalCredentials)
             .ToListAsync(cancellationToken);
     }
 
@@ -59,4 +59,5 @@ public class IssuerRepository : IIssuerRepository
             .AsNoTracking()
             .AnyAsync(i => i.Cnpj == cnpj, cancellationToken);
     }
+    
 }

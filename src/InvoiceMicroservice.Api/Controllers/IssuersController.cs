@@ -116,7 +116,7 @@ public class IssuersController : ControllerBase
         if (issuer == null)
             return NotFound();
         
-        var credential = issuer.PortalCredentials
+        var credential = issuer.Credentials
             .FirstOrDefault(pc => pc.PortalType == portalType && pc.IsActive);
         
         if (credential == null)
