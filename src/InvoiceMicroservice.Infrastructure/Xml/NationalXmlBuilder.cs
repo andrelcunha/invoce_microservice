@@ -15,7 +15,6 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     private static readonly XNamespace NfseNamespace = "http://www.sped.fazenda.gov.br/nfse";
 
     private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;
-    private readonly IMunicipalityRepository _municipalityRepo;
     private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly ILogger<NationalXmlBuilder> _logger;
 
@@ -31,12 +30,10 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
     public NationalXmlBuilder(
         IServiceTypeTaxMappingRepository serviceTaxRepo,
-        IMunicipalityRepository municipalityRepo,
         IPortalCredentialsRepository credentialsRepo,
         ILogger<NationalXmlBuilder> logger)
     {
         _serviceTaxRepo = serviceTaxRepo;
-        _municipalityRepo = municipalityRepo;
         _credentialsRepo = credentialsRepo;
         _logger = logger;
     }
@@ -90,8 +87,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
     private async Task<XElement> BuildInfDpsAsync(Invoice invoice, IssuerDto issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
-        var codMun = await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct);
-        var codMunToma = await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, ct);
+        var codMun = issuer.Address.IbgeCode;
+        var codMunToma = consumer.Address.IbgeCode;
 
         var id = BuildDpsId(issuer.Cnpj, codMun, serie, numero); 
         var infDps = El("infDPS", new XAttribute("Id", id));
@@ -245,7 +242,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var servico = El("serv");
 
         var locPrest = El("locPrest");
-        locPrest.Add(El("cLocPrestacao", await GetIbgeCodeAsync(issuer.Address.City, issuer.Address.Uf, ct)));
+        locPrest.Add(El("cLocPrestacao", issuer.Address.IbgeCode));
         servico.Add(locPrest);
 
         var cServ = El("cServ");
@@ -366,7 +363,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     private async Task<XElement> BuildDestinatarioAsync(Consumer consumer, CancellationToken cancellationToken)
     {
         var dest = El("dest");
-        string codMunConsumer = await GetIbgeCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken);
+        string codMunConsumer = consumer.Address.IbgeCode;
 
 
         // ID: CPF/CNPJ/NIF
@@ -448,12 +445,6 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         }
 
         return ServiceTypeTaxCodes.Default();
-    }
-
-    private async Task<string> GetIbgeCodeAsync(string city, string uf, CancellationToken cancellationToken)
-    {
-        var municipality = await _municipalityRepo.GetByCityAndUfAsync(city, uf, cancellationToken);
-        return municipality?.IbgeCode ?? "4204301"; // Default to example (Concórdia-SC IBGE)
     }
 
         private string SignXml(string xml, byte[] certificateData, string certificatePassword)
