@@ -7,7 +7,9 @@ using System.Xml;
 using System.Xml.Linq;
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
+using InvoiceMicroservice.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace InvoiceMicroservice.Infrastructure.Services;
 
@@ -20,27 +22,27 @@ public class IpmApiClient : IApiClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<IpmApiClient> _logger;
     private readonly IPortalCredentialsRepository _credentialsRepo;
-    private readonly ApiClientOptions _options;
+    private readonly PortalConfigs _portalConfigs;  
 
     private readonly CookieContainer _cookieContainer;
 
     public IpmApiClient(
         HttpClient httpClient,
         ILogger<IpmApiClient> logger,
-        ApiClientOptions options,
+        IOptions<PortalConfigs> portalConfigs,
         IPortalCredentialsRepository credentialsRepo)
     {
-        _options = options;
         _httpClient = httpClient;
         _logger = logger;
         _credentialsRepo = credentialsRepo;
+        _portalConfigs = portalConfigs.Value;
         _cookieContainer = new CookieContainer();
 
     }
 
-    private void ConfigureHttpClient(PortalCredentials credentials)
+    private void ConfigureHttpClient(PortalCredentials credentials, PortalConfig config)
     {
-        _httpClient.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+        _httpClient.Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds);
 
         // Basic Authentication
         var authBytes = Encoding.UTF8.GetBytes($"{credentials.Username}:{credentials.PasswordHash}");
@@ -76,10 +78,14 @@ public class IpmApiClient : IApiClient
                 Messages = new List<string> { $"No IPM credentials configured for CNPJ {issuerCnpj}" }
             };
         }
-        ConfigureHttpClient(credentials);
+
+        var config = _portalConfigs.GetConfig(credentials.PortalType);
+        if (config == null)
+            throw new InvalidOperationException($"No API configuration found for portal type {credentials.PortalType}");
+        ConfigureHttpClient(credentials, config);
 
 
-        while (attempt < _options.RetryAttempts)
+        while (attempt < config.RetryAttempts)
         {
             attempt++;
 
@@ -88,7 +94,7 @@ public class IpmApiClient : IApiClient
                 _logger.LogInformation(
                     "Submitting invoice (attempt {Attempt}/{MaxAttempts}, testMode: {TestMode})",
                     attempt,
-                    _options.RetryAttempts,
+                    config.RetryAttempts,
                     isTestMode);
 
                 // Sign XML if required
@@ -102,9 +108,14 @@ public class IpmApiClient : IApiClient
                 xmlContent.Headers.ContentType = new MediaTypeHeaderValue("text/xml");
                 content.Add(xmlContent, "xml", "invoice.xml");
 
+                // get the base url from configuration instead of getting it from credentials
+
                 // Include cookies from previous session
-                var baseUrl = credentials.ApiBaseUrl;
-                var request = new HttpRequestMessage(HttpMethod.Post, baseUrl)
+                // var baseUrl = credentials.ApiBaseUrl;
+                var baseUrl = config.ApiBaseUrl;
+                var endpoint =  config.Endpoints.EmitInvoice;
+                var fullUrl = new Uri(new Uri(baseUrl), endpoint);
+                var request = new HttpRequestMessage(HttpMethod.Post, fullUrl)
                 {
                     Content = content
                 };
@@ -133,9 +144,9 @@ public class IpmApiClient : IApiClient
                     ex,
                     "IPM request timeout (attempt {Attempt}/{MaxAttempts})",
                     attempt,
-                    _options.RetryAttempts);
+                    config.RetryAttempts);
 
-                if (attempt < _options.RetryAttempts)
+                if (attempt < config.RetryAttempts)
                 {
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
                     await Task.Delay(delay, cancellationToken);
@@ -148,9 +159,9 @@ public class IpmApiClient : IApiClient
                     ex,
                     "IPM request failed (attempt {Attempt}/{MaxAttempts})",
                     attempt,
-                    _options.RetryAttempts);
+                    config.RetryAttempts);
 
-                if (attempt < _options.RetryAttempts)
+                if (attempt < config.RetryAttempts)
                 {
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
                     await Task.Delay(delay, cancellationToken);
@@ -163,7 +174,7 @@ public class IpmApiClient : IApiClient
                     ex,
                     "Unexpected error submitting invoice to IPM (attempt {Attempt}/{MaxAttempts})",
                     attempt,
-                    _options.RetryAttempts);
+                    config.RetryAttempts);
 
                 // Don't retry on unexpected errors
                 break;
