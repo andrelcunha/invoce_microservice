@@ -32,7 +32,7 @@ public class PortalCredentials
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    private PortalCredentials() { }
+    public PortalCredentials() { }
 
     public static PortalCredentials Create(
         Guid issuerId,        
