@@ -192,13 +192,6 @@ public class IpmApiClient : IApiClient
         };
     }
 
-    // private static string? GetIssuerCnpjFromXml(string xml)
-    // {
-    //     var doc = XDocument.Parse(xml);
-    //     var issuerCnpj = doc.Root?.Element("prestador")?.Element("cpfcnpj")?.Value;
-    //     return issuerCnpj;
-    // }
-
     public async Task<InvoiceQueryResult> QueryInvoiceAsync(
         string protocol,
         CancellationToken cancellationToken = default)

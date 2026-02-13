@@ -10,16 +10,13 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 {
     private readonly TaxConfig _taxConfig;
     private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;
-    private readonly IMunicipalityRepository _municipalityRepo;
 
     public IpmXmlBuilder(
         TaxConfig taxConfig, 
-        IServiceTypeTaxMappingRepository serviceTaxRepo,
-        IMunicipalityRepository municipalityRepo)
+        IServiceTypeTaxMappingRepository serviceTaxRepo)
     {
         _taxConfig = taxConfig;
         _serviceTaxRepo = serviceTaxRepo;
-        _municipalityRepo = municipalityRepo;
     }
 
     public PortalType GetPortalType()
@@ -46,10 +43,10 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         root.Add(await BuildNfSectionAsync(invoice, cancellationToken));
 
         // <prestador> - service provider (issuer)
-        var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
+        // var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
         root.Add(new XElement("prestador",
             new XElement("cpfcnpj", Helpers.OnlyDigits(issuer.Cnpj)),
-            new XElement("cidade", issuerTomCode)
+            new XElement("cidade", issuer.Address.TomCode)
         ));
 
         // <tomador> - service taker (consumer)
@@ -336,8 +333,8 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         // Service location and taxation
         lista.Add(new XElement("tributa_municipio_prestador", "S"));
         
-        var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
-        lista.Add(new XElement("codigo_local_prestacao_servico", issuerTomCode));
+        // var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
+        lista.Add(new XElement("codigo_local_prestacao_servico", issuer.Address.TomCode));
         
         // Unit information
         lista.Add(new XElement("unidade_codigo", "1")); // 1 = unit
@@ -384,8 +381,8 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         tomador.Add(new XElement("ponto_referencia", "")); // Reference point - optional
         tomador.Add(new XElement("bairro", Helpers.EscapeXmlContent(consumer.Address.Neighborhood)));
         
-        var consumerTomCode = await GetTomCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken);
-        tomador.Add(new XElement("cidade", consumerTomCode));
+        // var consumerTomCode = await GetTomCodeAsync(consumer.Address.City, consumer.Address.Uf, cancellationToken);
+        tomador.Add(new XElement("cidade", consumer.Address.TomCode));
         tomador.Add(new XElement("cep", Helpers.OnlyDigits(consumer.Address.ZipCode)));
         
         tomador.Add(new XElement("email", Helpers.EscapeXmlContent(consumer.Email ?? "")));
@@ -408,9 +405,10 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return tomador;
     }
 
-    private async Task<string> GetTomCodeAsync(string city, string uf, CancellationToken cancellationToken)
-    {
-        var municipality = await _municipalityRepo.GetByCityAndUfAsync(city, uf, cancellationToken);
-        return municipality?.TomCode ?? "8083";
-    }
+    // private async Task<string> GetTomCodeAsync(string city, string uf, CancellationToken cancellationToken)
+    // {
+    //     var municipality = await _municipalityRepo.GetByCityAndUfAsync(city, uf, cancellationToken);
+    //     return municipality?.TomCode ?? "8083";
+    // }
+
 }
