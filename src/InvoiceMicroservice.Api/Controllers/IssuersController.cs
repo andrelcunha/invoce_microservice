@@ -1,5 +1,5 @@
-using InvoiceMicroservice.Application.Commands.RegisterIssuer;
-using InvoiceMicroservice.Application.Commands.UpdateIssuerCredentials;
+using InvoiceMicroservice.Application.Commands.Issuer;
+using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Domain.ValueObjects;
 using Microsoft.AspNetCore.Mvc;
@@ -11,10 +11,12 @@ namespace InvoiceMicroservice.Api.Controllers;
 public class IssuersController : ControllerBase
 {
     private readonly IIssuerRepository _issuerRepository;
+    private readonly RegisterIssuerCommandHandler _registerHandler;
 
-    public IssuersController(IIssuerRepository issuerRepository)
+    public IssuersController(IIssuerRepository issuerRepository, RegisterIssuerCommandHandler registerHandler)
     {
         _issuerRepository = issuerRepository;
+        _registerHandler = registerHandler;
     }
 
     /// <summary>
@@ -28,7 +30,7 @@ public class IssuersController : ControllerBase
         CancellationToken cancellationToken)
     {
         // Validation + handler creates IssuerEntity + PortalCredentials together
-        var issuerId = await _handler.HandleAsync(command, cancellationToken);
+        var issuerId = await _registerHandler.HandleAsync(command, cancellationToken);
         
         return CreatedAtAction(
             nameof(GetIssuer),
@@ -54,77 +56,77 @@ public class IssuersController : ControllerBase
         return Ok(issuer);
     }
 
-    /// <summary>
-    /// Update issuer master data (name, address, CNAE).
-    /// </summary>
-    [HttpPut("{cnpj}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateIssuer(
-        string cnpj,
-        [FromBody] UpdateIssuerCommand command,
-        CancellationToken cancellationToken)
-    {
-        var issuer = await _issuerRepository.GetByCnpjAsync(new Cnpj(cnpj), cancellationToken);
+    // /// <summary>
+    // /// Update issuer master data (name, address, CNAE).
+    // /// </summary>
+    // [HttpPut("{cnpj}")]
+    // [ProducesResponseType(StatusCodes.Status204NoContent)]
+    // [ProducesResponseType(StatusCodes.Status404NotFound)]
+    // public async Task<IActionResult> UpdateIssuer(
+    //     string cnpj,
+    //     [FromBody] UpdateIssuerCommand command,
+    //     CancellationToken cancellationToken)
+    // {
+    //     var issuer = await _issuerRepository.GetByCnpjAsync(new Cnpj(cnpj), cancellationToken);
         
-        if (issuer == null)
-            return NotFound();
+    //     if (issuer == null)
+    //         return NotFound();
         
-        // Update via handler
-        await _handler.HandleAsync(issuer.Id, command, cancellationToken);
+    //     // Update via handler
+    //     await _handler.HandleAsync(issuer.Id, command, cancellationToken);
         
-        return NoContent();
-    }
+    //     return NoContent();
+    // }
 
-    /// <summary>
-    /// Add or update portal credentials for an issuer.
-    /// Nested under issuer resource.
-    /// </summary>
-    [HttpPut("{cnpj}/credentials/{portalType}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateCredentials(
-        string cnpj,
-        PortalType portalType,
-        [FromBody] UpdatePortalCredentialsCommand command,
-        CancellationToken cancellationToken)
-    {
-        var issuer = await _issuerRepository.GetByCnpjAsync(new Cnpj(cnpj), cancellationToken);
+    // /// <summary>
+    // /// Add or update portal credentials for an issuer.
+    // /// Nested under issuer resource.
+    // /// </summary>
+    // [HttpPut("{cnpj}/credentials/{portalType}")]
+    // [ProducesResponseType(StatusCodes.Status204NoContent)]
+    // [ProducesResponseType(StatusCodes.Status404NotFound)]
+    // public async Task<IActionResult> UpdateCredentials(
+    //     string cnpj,
+    //     PortalType portalType,
+    //     [FromBody] UpdatePortalCredentialsCommand command,
+    //     CancellationToken cancellationToken)
+    // {
+    //     var issuer = await _issuerRepository.GetByCnpjAsync(new Cnpj(cnpj), cancellationToken);
         
-        if (issuer == null)
-            return NotFound();
+    //     if (issuer == null)
+    //         return NotFound();
         
-        // Handler updates or creates credentials for this issuer+portalType
-        await _handler.HandleAsync(issuer.Id, portalType, command, cancellationToken);
+    //     // Handler updates or creates credentials for this issuer+portalType
+    //     await _handler.HandleAsync(issuer.Id, portalType, command, cancellationToken);
         
-        return NoContent();
-    }
+    //     return NoContent();
+    // }
 
-    /// <summary>
-    /// Delete portal credentials for an issuer.
-    /// </summary>
-    [HttpDelete("{cnpj}/credentials/{portalType}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DeleteCredentials(
-        string cnpj,
-        PortalType portalType,
-        CancellationToken cancellationToken)
-    {
-        var issuer = await _issuerRepository.GetByCnpjAsync(new Cnpj(cnpj), cancellationToken);
+    // /// <summary>
+    // /// Delete portal credentials for an issuer.
+    // /// </summary>
+    // [HttpDelete("{cnpj}/credentials/{portalType}")]
+    // [ProducesResponseType(StatusCodes.Status204NoContent)]
+    // [ProducesResponseType(StatusCodes.Status404NotFound)]
+    // public async Task<IActionResult> DeleteCredentials(
+    //     string cnpj,
+    //     PortalType portalType,
+    //     CancellationToken cancellationToken)
+    // {
+    //     var issuer = await _issuerRepository.GetByCnpjAsync(new Cnpj(cnpj), cancellationToken);
         
-        if (issuer == null)
-            return NotFound();
+    //     if (issuer == null)
+    //         return NotFound();
         
-        var credential = issuer.Credentials
-            .FirstOrDefault(pc => pc.PortalType == portalType && pc.IsActive);
+    //     var credential = issuer.PortalCredentials
+    //         .FirstOrDefault(pc => pc.PortalType == portalType && pc.IsActive);
         
-        if (credential == null)
-            return NotFound();
+    //     if (credential == null)
+    //         return NotFound();
         
-        credential.Deactivate();
-        await _issuerRepository.UpdateAsync(issuer, cancellationToken);
+    //     credential.Deactivate();
+    //     await _issuerRepository.UpdateAsync(issuer, cancellationToken);
         
-        return NoContent();
-    }
+    //     return NoContent();
+    // }
 }

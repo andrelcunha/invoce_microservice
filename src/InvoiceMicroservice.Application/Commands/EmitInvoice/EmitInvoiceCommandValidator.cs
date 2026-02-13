@@ -1,31 +1,29 @@
 using System.Data;
 using FluentValidation;
 using InvoiceMicroservice.Domain.Entities;
+using InvoiceMicroservice.Application.Validators;
 
 namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
 
 public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 {
-    private static readonly HashSet<string> ValidUfs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-        "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-        "RS", "RO", "RR", "SC", "SP", "SE", "TO"
-    };
 
     public  EmitInvoiceCommandValidator()
     {
         RuleFor(x => x.ClientId)
             .NotEmpty().WithMessage("ClientId is required.");
+        
+        RuleFor(x => x.IssuerCnpj)
+            .NotEmpty().WithMessage("IssuerCnpj is required.")
+            .Must(ValidationHelpers.BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
 
-            RuleFor(x => x.Data).SetValidator(new EmitInvoiceDataValidator());
+        RuleFor(x => x.Data).SetValidator(new EmitInvoiceDataValidator());
     }
 
     internal class EmitInvoiceDataValidator : AbstractValidator<EmitInvoiceData>
     {
         public EmitInvoiceDataValidator()
         {
-            RuleFor(x => x.Issuer).SetValidator(new IssuerValidator());
             RuleFor(x => x.Consumer).SetValidator(new ConsumerValidator());
 
             RuleFor(x => x.ServiceDescription)
@@ -56,7 +54,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
         {
             RuleFor(x => x.Cnpj)
                 .NotEmpty()
-                .Must(BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
+                .Must(ValidationHelpers.BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
 
             RuleFor(x => x.MunicipalInscription)
                 .NotEmpty().MaximumLength(20);
@@ -83,7 +81,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 
             RuleFor(x => x.CpfCnpj)
                 .NotEmpty()
-                .Must(BeValidCpfOrCnpj).WithMessage("Invalid CPF/CNPJ format or check digits.");
+                .Must(ValidationHelpers.BeValidCpfOrCnpj).WithMessage("Invalid CPF/CNPJ format or check digits.");
 
             When(x => !string.IsNullOrEmpty(x.Email), () =>
             {
@@ -132,7 +130,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
             RuleFor(x => x.Uf)
                 .NotEmpty()
                 .MaximumLength(2)
-                .Must(uf => ValidUfs.Contains(uf))
+                .Must(uf => ValidationHelpers.IsValidUf(uf))
                 .WithMessage("Invalid Brazilian state (UF).");
 
             RuleFor(x => x.ZipCode)
@@ -141,69 +139,4 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
                 .WithMessage("ZipCode must be 8 digits  (NNNNN-NNN or NNNNNNNN).");
         }
     }
-
-    private static bool BeValidCnpj(string cnpj)
-    {
-        var digits = OnlyDigits(cnpj);
-    if (digits.Length != 14) return false;
-
-    // CNPJ check digit calculation
-    int[] multipliers1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-    int[] multipliers2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-
-    var sum = 0;
-    for (int i = 0; i < 12; i++)
-        sum += (digits[i] - '0') * multipliers1[i];
-
-    var mod = sum % 11;
-    var digit1 = mod < 2 ? 0 : 11 - mod;
-
-    if (digits[12] - '0' != digit1) return false;
-
-    sum = 0;
-    for (int i = 0; i < 13; i++)
-        sum += (digits[i] - '0') * multipliers2[i];
-
-    mod = sum % 11;
-    var digit2 = mod < 2 ? 0 : 11 - mod;
-
-    return digits[13] - '0' == digit2;
-    }
-
-    private static bool BeValidCpfOrCnpj(string cpfOrCnpj)
-    {
-        var digits = OnlyDigits(cpfOrCnpj);
-        return digits.Length == 11 ? BeValidCpf(digits) :BeValidCnpj(digits);
-    }
-
-    private static bool BeValidCpf(string digits)
-    {
-        if (digits.Length != 11) return false;
-
-        // Reject known invalid patterns like 00000000000
-        if (new string(digits[0], 11) == digits) return false;
-
-        int[] multipliers1 = [10, 9, 8, 7, 6, 5, 4, 3, 2];
-        int[] multipliers2 = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
-
-        var sum = 0;
-        for (int i = 0; i < 9; i++)
-            sum += (digits[i] - '0') * multipliers1[i];
-
-        var mod = sum % 11;
-        var digit1 = mod < 2 ? 0 : 11 - mod;
-        if (digits[9] - '0' != digit1) return false;
-
-        sum = 0;
-        for (int i = 0; i < 10; i++)
-            sum += (digits[i] - '0') * multipliers2[i];
-
-        mod = sum % 11;
-        var digit2 = mod < 2 ? 0 : 11 - mod;
-
-        return digits[10] - '0' == digit2;
-    }
-
-    private static string OnlyDigits(string input) =>
-        new([.. input.Where(char.IsDigit)]);
 }
