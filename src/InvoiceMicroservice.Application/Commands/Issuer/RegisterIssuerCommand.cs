@@ -15,13 +15,12 @@ public record RegisterIssuerCommand
     public required RegimeTributario RegimeTributario { get; init; }
     public required SubRegimeTributario SubRegimeTributario { get; init; }
     
-    // Portal credentials (required at registration)
-    public required PortalType PortalType { get; init; }
-    public required string PortalUsername { get; init; }
-    public required string PortalPassword { get; init; } // Will be hashed
-    public bool RequiresSignature { get; init; }
-    public byte[]? Certificate { get; init; }
-    public string? CertificatePassword { get; init; }
+    // public required PortalType PortalType { get; init; }
+    // public required string PortalUsername { get; init; }
+    // public required string PortalPassword { get; init; } // Will be hashed
+    // public bool RequiresSignature { get; init; }
+    // public byte[]? Certificate { get; init; }
+    // public string? CertificatePassword { get; init; }
 }
 
 public class RegisterIssuerCommandHandler
@@ -61,22 +60,22 @@ public class RegisterIssuerCommandHandler
         };
 
 
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(command.PortalPassword);
-        var certificatePasswordHash = !string.IsNullOrEmpty(command.CertificatePassword)
-            ? BCrypt.Net.BCrypt.HashPassword(command.CertificatePassword)
-            : null;
+        // var passwordHash = BCrypt.Net.BCrypt.HashPassword(command.PortalPassword);
+        // var certificatePasswordHash = !string.IsNullOrEmpty(command.CertificatePassword)
+        //     ? BCrypt.Net.BCrypt.HashPassword(command.CertificatePassword)
+        //     : null;
 
-        var credentials = Domain.Entities.PortalCredentials.Create(
-            issuer.Id,
-            command.PortalType,
-            command.PortalUsername,
-            passwordHash,
-            command.RequiresSignature,
-            command.Certificate,
-            certificatePasswordHash
-        );
+        // var credentials = Domain.Entities.PortalCredentials.Create(
+        //     issuer.Id,
+        //     command.PortalType,
+        //     command.PortalUsername,
+        //     passwordHash,
+        //     command.RequiresSignature,
+        //     command.Certificate,
+        //     certificatePasswordHash
+        // );
 
-        issuer.PortalCredentials = credentials;
+        // issuer.PortalCredentials = credentials;
 
         await _repository.AddAsync(issuer, cancellationToken);
         return issuer.Id;

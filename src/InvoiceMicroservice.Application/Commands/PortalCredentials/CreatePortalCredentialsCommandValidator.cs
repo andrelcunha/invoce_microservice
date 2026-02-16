@@ -3,18 +3,13 @@ using InvoiceMicroservice.Domain.ValueObjects;
 
 namespace InvoiceMicroservice.Application.Commands.PortalCredentials;
 
-public class CreatePortalCredentialsDtoValidator : AbstractValidator<CreatePortalCredentialsDto>
+public class CreatePortalCredentialsCommandValidator : AbstractValidator<CreatePortalCredentialsCommand>
 {
-    public CreatePortalCredentialsDtoValidator()
+    public CreatePortalCredentialsCommandValidator()
     {
         RuleFor(x => x.IssuerCnpj)
             .NotEmpty().WithMessage("IssuerCnpj is required.")
             .Must(BeValidCnpj).WithMessage("IssuerCnpj is not valid.");
-        
-        RuleFor(x => x.ApiBaseUrl)
-            .NotEmpty().WithMessage("ApiBaseUrl is required.")
-            .Must(uri => Uri.TryCreate(uri, UriKind.Absolute, out _))
-            .WithMessage("ApiBaseUrl must be a valid URL.");
         
         RuleFor(x => x.Username)
             .NotEmpty().WithMessage("Username is required.")
@@ -30,6 +25,13 @@ public class CreatePortalCredentialsDtoValidator : AbstractValidator<CreatePorta
             RuleFor(x => x.CertificatePassword)
                 .NotEmpty().WithMessage("CertificatePassword is required when RequiresSignature is true.");
         });
+
+        RuleFor(x => x.Username)
+            .NotEmpty().WithMessage("Usuário do portal é obrigatório.");
+
+        RuleFor(x => x.Password)
+            .NotEmpty().WithMessage("Senha do portal é obrigatória.")
+            .MinimumLength(6).WithMessage("Senha do portal deve conter no mínimo 6 caracteres.");
     }
 
     private bool BeValidCnpj(string cnpj)

@@ -32,12 +32,5 @@ public class RegisterIssuerCommandValidator : AbstractValidator<RegisterIssuerCo
         RuleFor(x => x.Address)
             .NotNull().WithMessage("Endereço é obrigatório.")
             .SetValidator(new AddressValidator());
-
-        RuleFor(x => x.PortalUsername)
-            .NotEmpty().WithMessage("Usuário do portal é obrigatório.");
-
-        RuleFor(x => x.PortalPassword)
-            .NotEmpty().WithMessage("Senha do portal é obrigatória.")
-            .MinimumLength(6).WithMessage("Senha do portal deve conter no mínimo 6 caracteres.");
     }
 }
