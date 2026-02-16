@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IServiceTypeTaxMappingRepository, ServiceTypeTaxMappingRepository>();
         services.AddScoped<IIssuerRepository, IssuerRepository>();
+        services.AddScoped<IPortalCredentialsRepository, PortalCredentialsRepository>();
 
         // XML Builders (concrete implementations - one per portal type)
         services.AddScoped<IpmXmlBuilder>();
