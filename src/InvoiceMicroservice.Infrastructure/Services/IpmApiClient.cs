@@ -40,7 +40,7 @@ public class IpmApiClient : IApiClient
 
     }
 
-    private void ConfigureHttpClient(PortalCredentials credentials, PortalConfig config)
+    private void ConfigureHttpClient(PortalCredentialsEntity credentials, PortalConfig config)
     {
         _httpClient.Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds);
 

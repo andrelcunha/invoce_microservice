@@ -22,17 +22,7 @@ public class Address
     public string City { get; set; } = null!;
     public string Uf { get; set; } = null!;
     public string ZipCode { get; set; } = null!;
-    
-    /// <summary>
-    /// IBGE 7-digit municipal code (e.g., "4205407" for Florianópolis-SC).
-    /// Used for tax jurisdiction and IPM API calls.
-    /// </summary>
     public string IbgeCode { get; set; } = null!;
-    
-    /// <summary>
-    /// TOM code for IPM API (e.g., "8083" for Concordia-SC).
-    /// Falls back to IbgeCode if not specified.
-    /// </summary>
     public string? TomCode { get; set; }
 }
 

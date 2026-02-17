@@ -11,7 +11,7 @@ public class InvoiceDbContext : DbContext
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<ServiceTypeTaxMapping> ServiceTypeTaxMappings => Set<ServiceTypeTaxMapping>();
     public DbSet<IssuerEntity> Issuers => Set<IssuerEntity>();
-    public DbSet<PortalCredentials> PortalCredentials => Set<PortalCredentials>();
+    public DbSet<PortalCredentialsEntity> PortalCredentials => Set<PortalCredentialsEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -237,11 +237,11 @@ public class InvoiceDbContext : DbContext
 
             entity.HasOne(e => e.PortalCredentials)
                 .WithOne(pc => pc.Issuer)
-                .HasForeignKey<PortalCredentials>(pc => pc.IssuerId);
+                .HasForeignKey<PortalCredentialsEntity>(pc => pc.IssuerId);
         });
 
         // PortalCredentials configuration
-        modelBuilder.Entity<PortalCredentials>(entity =>
+        modelBuilder.Entity<PortalCredentialsEntity>(entity =>
         {
             entity.ToTable("portal_credentials");
             entity.HasKey(e => e.Id);

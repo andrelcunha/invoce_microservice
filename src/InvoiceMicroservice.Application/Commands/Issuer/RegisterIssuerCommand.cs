@@ -10,7 +10,17 @@ public record RegisterIssuerCommand
     public required string MunicipalInscription { get; init; }
     public required string TradeName { get; init; }
     public required string LegalName { get; init; }
-    public required string Cnae { get; init; }
+    private string _cnae = string.Empty;
+    public required string Cnae
+    {
+        get => _cnae;
+        set
+        {
+            _cnae = string.IsNullOrWhiteSpace(value) 
+                ? value
+                : new string(value.Where(char.IsDigit).ToArray());
+        }
+    }
     public required Address Address { get; init; }
     public required RegimeTributario RegimeTributario { get; init; }
     public required SubRegimeTributario SubRegimeTributario { get; init; }

@@ -1,6 +1,7 @@
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Domain.ValueObjects;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
@@ -47,17 +48,20 @@ public class EmitInvoiceCommandHandler
     private readonly IInvoiceXmlBuilderFactory _xmlBuilderFactory;
     private readonly IApiClient _apiClient;
     private readonly IIssuerRepository _issuerRepository;
+    private readonly ILogger<EmitInvoiceCommandHandler> _logger;
 
     public EmitInvoiceCommandHandler(
-        IInvoiceRepository repository, 
-        IInvoiceXmlBuilderFactory xmlBuilderFactory,
+            IInvoiceRepository repository, 
+            IInvoiceXmlBuilderFactory xmlBuilderFactory,
             IApiClient apiClient,
-            IIssuerRepository issuerRepository)
+            IIssuerRepository issuerRepository,
+            ILogger<EmitInvoiceCommandHandler> logger)
     {
         _repository = repository;
         _xmlBuilderFactory = xmlBuilderFactory;
         _apiClient = apiClient;
         _issuerRepository = issuerRepository;
+        _logger = logger;
     }
 
     public async Task<Guid> HandleAsync(EmitInvoiceCommand request, CancellationToken cancellationToken = default)
@@ -70,8 +74,27 @@ public class EmitInvoiceCommandHandler
 
         if (!issuer.IsActive)
             throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} is inactive.");
+
+        _logger.LogInformation("Serialized address for issuer {IssuerCnpj}: {AddressJson}", issuer.Cnpj, issuer.AddressJson);        
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
         
-        var issuerDto =  JsonSerializer.Deserialize<IssuerDto>(issuer.AddressJson);
+        var issuerAddress = JsonSerializer.Deserialize<Address>(issuer.AddressJson, jsonOptions) 
+            ?? throw new InvalidOperationException($"Invalid address data for issuer with CNPJ {issuerCnpj.Value}.");
+        _logger.LogInformation("Deserialized IBGE Code for issuer {IssuerCnpj}: {IbgeCode}", issuer.Cnpj, issuerAddress.IbgeCode);
+        var issuerDto = new IssuerDto
+        {
+            Cnpj = issuer.Cnpj.Value,
+            MunicipalInscription = issuer.MunicipalInscription,
+            Name = issuer.TradeName,
+            Cnae = issuer.Cnae,
+            Address = issuerAddress,
+            RegimeTributario = issuer.RegimeTributario,
+            SubRegimeTributario = issuer.SubRegimeTributario
+        };
         var issuerJson = JsonSerializer.Serialize(issuerDto);
         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
 

@@ -1,0 +1,124 @@
+<DPS versao="1.01" xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infDPS Id="DPS431490225138146400020701111000000000009999">
+    <tpAmb>2</tpAmb>
+    <dhEmi>2026-02-16T14:20:29-03:00</dhEmi>
+    <verAplic>1.0.0</verAplic>
+    <serie>1111</serie>
+    <nDPS>9999</nDPS>
+    <dCompet>2026-02-16</dCompet>
+    <tpEmit>1</tpEmit>
+    <cLocEmi>4314902</cLocEmi>
+    <prest>
+      <CNPJ>51381464000207</CNPJ>
+      <regTrib>
+        <opSimpNac>1</opSimpNac>
+        <regEspTrib>0</regEspTrib>
+      </regTrib>
+    </prest>
+    <toma>
+      <CPF>02896398910</CPF>
+      <xNome>Andre</xNome>
+      <end>
+        <endNac>
+          <cMun>4204301</cMun>
+          <CEP>89700258</CEP>
+        </endNac>
+        <xLgr>Rua Tancredo Neves</xLgr>
+        <nro>152</nro>
+        <xCpl>Bloco H</xCpl>
+        <xBairro>Cinquentenario</xBairro>
+      </end>
+      <fone>41999471672</fone>
+      <email>deko81@gmail.com</email>
+    </toma>
+    <serv>
+      <locPrest>
+        <cLocPrestacao>4314902</cLocPrestacao>
+      </locPrest>
+      <cServ>
+        <cTribNac>140101</cTribNac>
+        <cTribMun>001</cTribMun>
+        <xDescServ>Lavagem completa</xDescServ>
+        <cNBS>118032900</cNBS>
+      </cServ>
+    </serv>
+    <valores>
+      <vServPrest>
+        <vServ>1.00</vServ>
+      </vServPrest>
+      <trib>
+        <tribMun>
+          <tribISSQN>1</tribISSQN>
+          <tpRetISSQN>1</tpRetISSQN>
+        </tribMun>
+        <tribFed>
+          <piscofins>
+            <CST>00</CST>
+            <pAliqPis>0.65</pAliqPis>
+            <pAliqCofins>3.00</pAliqCofins>
+            <vPis>0.01</vPis>
+            <vCofins>0.03</vCofins>
+            <tpRetPisCofins>1</tpRetPisCofins>
+          </piscofins>
+        </tribFed>
+        <totTrib>
+          <vTotTrib>
+            <vTotTribFed>0.04</vTotTribFed>
+            <vTotTribEst>0.00</vTotTribEst>
+            <vTotTribMun>0.05</vTotTribMun>
+          </vTotTrib>
+        </totTrib>
+      </trib>
+    </valores>
+    <IBSCBS>
+      <finNFSe>0</finNFSe>
+      <indFinal>1</indFinal>
+      <cIndOp>050101</cIndOp>
+      <indDest>1</indDest>
+      <dest>
+        <CPF>02896398910</CPF>
+        <xNome>Andre</xNome>
+        <end>
+          <endNac>
+            <cMun>4204301</cMun>
+            <CEP>89700258</CEP>
+          </endNac>
+          <xLgr>Rua Tancredo Neves</xLgr>
+          <nro>152</nro>
+          <xCpl>Bloco H</xCpl>
+          <xBairro>Cinquentenario</xBairro>
+        </end>
+        <fone>41999471672</fone>
+        <email>deko81@gmail.com</email>
+      </dest>
+      <valores>
+        <trib>
+          <gIBSCBS>
+            <CST>140101</CST>
+            <cClassTrib>000001</cClassTrib>
+          </gIBSCBS>
+        </trib>
+      </valores>
+    </IBSCBS>
+  </infDPS>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+      <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+      <Reference URI="">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+          <Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+        <DigestValue>DfJC8eGX6dknkCZlb5pOXfxEVTFbNp/1bCX/EqzdPoo=</DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue>r0bsQ4Nfq9xHdGvZnWlWUFrDP8IHMU/pgzp+634rcdgpvEVbzdwWmeMRZ9asJTidaau25rRZ7ZDNjYTw1qSrmhrgUCLsBboIvcvn0fhQw+fxxywnRgFuMYajBh3oTQu3suIWP1a8yXmgXkFysWwuUumj/it7tVV9x8hkfk76LtXWoUs3gEsCZmwuSl4tmUfudJ/13gcG70dGdKtU2R2gbCRbTg15oZgy7o10YsUbPcjRXbgCeaNMwDSXfqmF57UI4rSGBSfLGBfhNx22sdqUhpVxgeTvm8xCLZ4XOlv/iGfyBM4j7rVdzY0IJZhagBME34FIrwOm636tSGBQE6UXZw==</SignatureValue>
+    <KeyInfo>
+      <X509Data>
+        <X509Certificate>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</X509Certificate>
+      </X509Data>
+    </KeyInfo>
+  </Signature>
+</DPS>

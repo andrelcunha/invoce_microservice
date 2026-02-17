@@ -88,8 +88,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     private async Task<XElement> BuildInfDpsAsync(Invoice invoice, IssuerDto issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
         var codMun = issuer.Address.IbgeCode;
-        var codMunToma = consumer.Address.IbgeCode;
-
+        var codMunToma = consumer.Address.IbgeCode ;
+        _logger.LogInformation("Building infDPS for issuer {IssuerCnpj} in municipality {MunicipalityCode} with series {Serie} and number {Number}", issuer.Cnpj, codMun, serie, numero);
         var id = BuildDpsId(issuer.Cnpj, codMun, serie, numero); 
         var infDps = El("infDPS", new XAttribute("Id", id));
         // tpAmp - Tipo de Ambiente (1=Produção, 2=Homologação)

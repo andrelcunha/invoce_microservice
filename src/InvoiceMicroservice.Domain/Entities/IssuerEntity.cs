@@ -18,6 +18,6 @@ public class IssuerEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    public PortalCredentials PortalCredentials { get; set; } = null!;
+    public PortalCredentialsEntity PortalCredentials { get; set; } = null!;
 }
 

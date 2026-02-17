@@ -1,13 +1,17 @@
+using System.Text.Json.Serialization;
+
 namespace InvoiceMicroservice.Domain.Entities;
 
 /// <summary>
 /// Portal credentials for NFS-e emission tied to a specific municipality.
 /// Each issuer (CNPJ) has credentials for their operating municipality's portal.
 /// </summary>
-public class PortalCredentials
+public class PortalCredentialsEntity
 {
     public Guid Id { get; private set; }
     public Guid IssuerId { get; private set; }
+    
+    [JsonIgnore]
     public IssuerEntity Issuer { get; private set; } = null!; // Navigation property
     
     public PortalType PortalType { get; set; }
@@ -32,9 +36,9 @@ public class PortalCredentials
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    public PortalCredentials() { }
+    public PortalCredentialsEntity() { }
 
-    public static PortalCredentials Create(
+    public static PortalCredentialsEntity Create(
         Guid issuerId,        
         PortalType portalType,
         string username,
@@ -43,7 +47,7 @@ public class PortalCredentials
         byte[]? certificateData = null,
         string? certificatePasswordHash = null)
     {
-        return new PortalCredentials
+        return new PortalCredentialsEntity
         {
             Id = Guid.NewGuid(),
             IssuerId = issuerId,

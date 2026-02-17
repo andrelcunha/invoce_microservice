@@ -19,16 +19,20 @@ public class PortalCredentialsController : ControllerBase
     private readonly IValidator<CreatePortalCredentialsCommand> _createValidator;
     private readonly IValidator<UpdatePortalCredentialsDto> _updateValidator;
 
+    private readonly CreatePortalCredentialsCommandHandler _createHandler;
+
     public PortalCredentialsController(
         IPortalCredentialsRepository repository,
         IIssuerRepository issuerRepository,
         IValidator<CreatePortalCredentialsCommand> createValidator,
-        IValidator<UpdatePortalCredentialsDto> updateValidator)
+        IValidator<UpdatePortalCredentialsDto> updateValidator,
+        CreatePortalCredentialsCommandHandler createHandler)
     {
         _repository = repository;
         _issuerRepository = issuerRepository;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _createHandler = createHandler;
     }
 
     /// <summary>
@@ -120,19 +124,11 @@ public class PortalCredentialsController : ControllerBase
     /// </summary>
     [HttpPost]
     [Consumes("multipart/form-data")]
-    [ProducesResponseType(typeof(PortalCredentials), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(PortalCredentialsEntity), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromForm] CreatePortalCredentialsCommand dto, [FromForm] UploadCertificateForm? certificate = null)
     {
-        // var issuer = await _repository.GetByIssuerCnpjAsync(dto.IssuerCnpj);
-        var cnpj = new Cnpj(dto.IssuerCnpj);
-        var issuer = await _issuerRepository.GetByCnpjAsync(cnpj);
-        if (issuer == null)
-        {
-            return BadRequest(new { error = $"Issuer with CNPJ {dto.IssuerCnpj} does not exist. Please register the issuer before adding portal credentials." });
-        }
-
         if (dto.RequiresSignature)
         {
             if (certificate?.Certificate == null)
@@ -140,7 +136,7 @@ public class PortalCredentialsController : ControllerBase
 
             if (!certificate.Certificate.FileName.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { error = "Certificate must be a .pfx file" });
-            
+
             if (certificate.Certificate.Length > 5 * 1024 * 1024) // 5MB limit
                 return BadRequest(new { error = "Certificate file must be less than 5MB" });
         }
@@ -150,46 +146,48 @@ public class PortalCredentialsController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(
                 validationResult.ToDictionary()));
 
+        byte[]? certificateData = await ExtractCertificateDataAsync(certificate);
+
+        try
+        {
+            PortalCredentialsEntity? credentials = await _createHandler.HandleAsync(dto, certificateData, CancellationToken.None);
+            if (credentials == null)
+                return NotFound(new { error = $"Issuer with CNPJ {dto.IssuerCnpj} not found" });
+
+            return CreatedAtAction(
+                nameof(GetById),
+                new { id = credentials.Id },
+                new
+                {
+                    credentials.Id,
+                    credentials.Issuer.Cnpj,
+                    credentials.PortalType,
+                    credentials.Username,
+                    credentials.RequiresSignature,
+                    HasCertificate = credentials.CertificateData != null,
+                    credentials.IsActive,
+                    credentials.CreatedAt
+                });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<byte[]?> ExtractCertificateDataAsync(UploadCertificateForm? certificate)
+    {
         // Read certificate bytes from uploaded file (only if provided)
         byte[]? certificateData = null;
-        string? certificatePasswordHash = null;
-        
+
         if (certificate?.Certificate != null && certificate.Certificate.Length > 0)
         {
             using var memoryStream = new MemoryStream();
             await certificate.Certificate.CopyToAsync(memoryStream);
             certificateData = memoryStream.ToArray();
-            
-            if (!string.IsNullOrWhiteSpace(dto.CertificatePassword))
-                certificatePasswordHash = HashPassword(dto.CertificatePassword);
         }
 
-        var credentials = PortalCredentials.Create(
-            issuer.Id,
-            GetPortalFromString(dto.PortalType),
-            dto.Username,
-            HashPassword(dto.Password),
-            dto.RequiresSignature,
-            certificateData,
-            certificatePasswordHash
-        );
-
-        await _repository.AddAsync(credentials);
-
-        return CreatedAtAction(
-            nameof(GetById),
-            new { id = credentials.Id },
-            new
-            {
-                credentials.Id,
-                credentials.Issuer.Cnpj,
-                credentials.PortalType,
-                credentials.Username,
-                credentials.RequiresSignature,
-                HasCertificate = credentials.CertificateData != null,
-                credentials.IsActive,
-                credentials.CreatedAt
-            });
+        return certificateData;
     }
 
     /// <summary>
@@ -291,12 +289,5 @@ public class PortalCredentialsController : ControllerBase
         // var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
         // return Convert.ToBase64String(bytes);
         return password;
-    }
-
-    private static PortalType GetPortalFromString(string portalTypeStr)
-    {
-        if (!Enum.TryParse<PortalType>(portalTypeStr, true, out var portalType))
-            throw new ArgumentException($"Invalid portal type: {portalTypeStr}");
-        return portalType;
     }
 }

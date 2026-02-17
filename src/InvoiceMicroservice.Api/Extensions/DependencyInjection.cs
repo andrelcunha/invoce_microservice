@@ -1,6 +1,7 @@
 using FluentValidation;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Application.Commands.Issuer;
+using InvoiceMicroservice.Application.Commands.PortalCredentials;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Infrastructure.Repositories;
 using InvoiceMicroservice.Infrastructure.Xml;
@@ -27,6 +28,7 @@ public static class DependencyInjection
         // Command handlers
         services.AddScoped<EmitInvoiceCommandHandler>();
         services.AddScoped<RegisterIssuerCommandHandler>();
+        services.AddScoped<CreatePortalCredentialsCommandHandler>();
 
         // Validators
         services.AddValidatorsFromAssemblyContaining<EmitInvoiceCommandValidator>();

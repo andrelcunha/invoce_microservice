@@ -14,8 +14,7 @@ public class RegisterIssuerCommandValidator : AbstractValidator<RegisterIssuerCo
             .WithMessage("CNPJ inválido.");
 
         RuleFor(x => x.MunicipalInscription)
-            .NotEmpty()
-            .WithMessage("Inscrição Municipal é obrigatória.")
+            // .NotEmpty().WithMessage("Inscrição Municipal é obrigatória.")
             .MaximumLength(50).WithMessage("Inscrição Municipal deve ter no máximo 50 caracteres.");
 
         RuleFor(x => x.TradeName)
@@ -24,10 +23,9 @@ public class RegisterIssuerCommandValidator : AbstractValidator<RegisterIssuerCo
         RuleFor(x => x.LegalName)
             .NotEmpty().WithMessage("Razão Social é obrigatória.");
 
-        RuleFor(x => x.Cnae)
+        RuleFor(x => x.Cnae) // must have seven digits
             .NotEmpty().WithMessage("CNAE é obrigatório.")
-            .Matches(@"^\d{4}-\d\/\d{2}$")
-            .WithMessage("CNAE deve estar no formato 'NNNN-N/NN' (ex: 4520-0/05 ).");
+            .Matches(@"^\d{7}$").WithMessage("CNAE deve ter 7 dígitos.");
 
         RuleFor(x => x.Address)
             .NotNull().WithMessage("Endereço é obrigatório.")
