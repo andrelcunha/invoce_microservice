@@ -4,7 +4,6 @@ using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
@@ -55,21 +54,21 @@ public class NationalApiClient : IApiClient
         handler.ServerCertificateCustomValidationCallback =
             (message, cert, chain, errors) =>
             {
-            // In test mode, accept any certificate issues
-            if (isTestMode)
-            {
-                if (errors != SslPolicyErrors.None)
-                    _logger.LogWarning("Test mode: accepting certificate with errors: {Errors}", errors);
-                return true;
-            }
-            // In production, only accept valid certificates
-            return errors == SslPolicyErrors.None;
-        };
+                // In test mode, accept any certificate issues
+                if (isTestMode)
+                {
+                    if (errors != SslPolicyErrors.None)
+                        _logger.LogWarning("Test mode: accepting certificate with errors: {Errors}", errors);
+                    return true;
+                }
+                // In production, only accept valid certificates
+                return errors == SslPolicyErrors.None;
+            };
 
         var config = _portalConfigs.GetConfig(credentials.PortalType);
         if (config == null)
             throw new InvalidOperationException($"No portal configuration found for portal type {credentials.PortalType}");
-        
+
         var baseUrl = config.ApiBaseUrl;
 
         using var httpClient = new HttpClient(handler)
@@ -96,7 +95,7 @@ public class NationalApiClient : IApiClient
         issuerCnpj,
         isTestMode,
         apiUrl);
-        
+
         if (isTestMode)
         {
             // saving dpsXmlGZipB64 to file for debugging
@@ -120,7 +119,7 @@ public class NationalApiClient : IApiClient
                     response.StatusCode == HttpStatusCode.Forbidden ||
                     response.StatusCode == HttpStatusCode.InternalServerError)
                 {
-                    try 
+                    try
                     {
                         var errorResponse = JsonSerializer.Deserialize<NationalNfseErrorResponse>(responseContent);
                         if (errorResponse != null && errorResponse.Erros.Count > 0)

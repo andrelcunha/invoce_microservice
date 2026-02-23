@@ -6,6 +6,7 @@ using System.Xml;
 using System.Xml.Linq;
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
+using InvoiceMicroservice.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 
 namespace InvoiceMicroservice.Infrastructure.Xml;
@@ -17,6 +18,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     private readonly IServiceTypeTaxMappingRepository _serviceTaxRepo;
     private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly ILogger<NationalXmlBuilder> _logger;
+
+    private readonly IApiClient _apiClient;
 
     private static XElement El(string name, params object[] content)
         => new XElement(NfseNamespace + name, content);
@@ -31,12 +34,15 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     public NationalXmlBuilder(
         IServiceTypeTaxMappingRepository serviceTaxRepo,
         IPortalCredentialsRepository credentialsRepo,
-        ILogger<NationalXmlBuilder> logger)
+        ILogger<NationalXmlBuilder> logger, NationalApiClient apiClient)
     {
         _serviceTaxRepo = serviceTaxRepo;
         _credentialsRepo = credentialsRepo;
         _logger = logger;
+        _apiClient = apiClient; // TODO: inject real options
     }
+
+    public IApiClient GetApiClient() => _apiClient;
 
     public PortalType GetPortalType() => PortalType.Nacional;
 
@@ -55,7 +61,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         int numero = 9999; // Hardcoded for MVP TODO: Find a way to get real series/number
         var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
-        var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes,  serie, numero, isTestMode, cancellationToken);
+        var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes, serie, numero, isTestMode, cancellationToken);
         root.Add(infDps);
         // sign the XML
         string signedXml = SignXml(root.ToString(SaveOptions.DisableFormatting), credentials!.CertificateData!, credentials.CertificatePasswordHash!);
@@ -66,7 +72,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return xmlString;
     }
 
-    private string BuildDpsId(string cnpj,  string codMun, int serie, int numero)
+    private string BuildDpsId(string cnpj, string codMun, int serie, int numero)
     {
         var cnpjDigits = Helpers.OnlyDigits(cnpj);
         // A formação do identificador da DPS
@@ -85,12 +91,12 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return builder.ToString();
     }
 
-    private async Task<XElement> BuildInfDpsAsync(Invoice invoice, IssuerDto issuer,  Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
+    private async Task<XElement> BuildInfDpsAsync(Invoice invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
         var codMun = issuer.Address.IbgeCode;
-        var codMunToma = consumer.Address.IbgeCode ;
+        var codMunToma = consumer.Address.IbgeCode;
         _logger.LogInformation("Building infDPS for issuer {IssuerCnpj} in municipality {MunicipalityCode} with series {Serie} and number {Number}", issuer.Cnpj, codMun, serie, numero);
-        var id = BuildDpsId(issuer.Cnpj, codMun, serie, numero); 
+        var id = BuildDpsId(issuer.Cnpj, codMun, serie, numero);
         var infDps = El("infDPS", new XAttribute("Id", id));
         // tpAmp - Tipo de Ambiente (1=Produção, 2=Homologação)
         infDps.Add(El("tpAmb", isTestMode ? "2" : "1")); // 1 - Produção, 2 - Homologação
@@ -250,7 +256,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         cServ.Add(El("cTribNac", Helpers.StripDots(codes.ServiceListCode)));
         // cTribMun
         // if (!string.IsNullOrWhiteSpace(invoice.MunicipalTaxCode))
-            cServ.Add(El("cTribMun", Helpers.StripDots("001")));
+        cServ.Add(El("cTribMun", Helpers.StripDots("001")));
         // xDescServ
         cServ.Add(El("xDescServ", Helpers.EscapeXmlContent(invoice.ServiceDescription)));
         // cNBS
@@ -300,9 +306,9 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         pisCofins.Add(El("CST", invoice.PisCofinsCts ?? "01"));
         if (invoice.PisCofinsCts != "00")
             pisCofins.Add(El("vBCPisCofins", FormatMonetary(invoice.Amount))); // Base de Cálculo
-        pisCofins.Add(El("pAliqPis", FormatRate(invoice.AliquotaPis))); 
+        pisCofins.Add(El("pAliqPis", FormatRate(invoice.AliquotaPis)));
         pisCofins.Add(El("pAliqCofins", FormatRate(invoice.AliquotaCofins)));
-        pisCofins.Add(El("vPis", FormatMonetary(invoice.Amount * invoice.AliquotaPis))); 
+        pisCofins.Add(El("vPis", FormatMonetary(invoice.Amount * invoice.AliquotaPis)));
         pisCofins.Add(El("vCofins", FormatMonetary(invoice.Amount * invoice.AliquotaCofins)));
         pisCofins.Add(El("tpRetPisCofins", invoice.TipoRetencaoPisCofins ?? "2"));
         tribFed.Add(pisCofins);
@@ -372,7 +378,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
             dest.Add(El("CPF", consumerDigits));
         else if (consumerDigits.Length == 14)
             dest.Add(El("CNPJ", consumerDigits));
-        else{
+        else
+        {
             dest.Add(El("NIF", consumer.CpfCnpj)); // Foreign
             dest.Add(El("cNaoNIF", "0")); // Default: Not informed
         }
@@ -403,8 +410,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // Tributacao group
         var trib = El("trib");
         var gIBSCBS = El("gIBSCBS");
-        gIBSCBS.Add(El("CST", invoice.IbsCbsCst ?? "000")); 
-        gIBSCBS.Add(El("cClassTrib", invoice.IbsCbsClassTrib ?? "000000")); 
+        gIBSCBS.Add(El("CST", invoice.IbsCbsCst ?? "000"));
+        gIBSCBS.Add(El("cClassTrib", invoice.IbsCbsClassTrib ?? "000000"));
         // gIBSCBS.Add(new XElement("cCredPres", "...")); // Presumed credit code if applicable
 
         // // gTribRegular: Regular taxation details
@@ -447,11 +454,11 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return ServiceTypeTaxCodes.Default();
     }
 
-        private string SignXml(string xml, byte[] certificateData, string certificatePassword)
+    private string SignXml(string xml, byte[] certificateData, string certificatePassword)
     {
         var certificate = X509CertificateLoader.LoadPkcs12(
-            certificateData, 
-            certificatePassword, 
+            certificateData,
+            certificatePassword,
             X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
 
         // Create signed XML

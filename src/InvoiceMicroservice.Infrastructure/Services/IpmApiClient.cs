@@ -19,25 +19,33 @@ namespace InvoiceMicroservice.Infrastructure.Services;
 /// </summary>
 public class IpmApiClient : IApiClient
 {
-    private readonly HttpClient _httpClient;
     private readonly ILogger<IpmApiClient> _logger;
     private readonly IPortalCredentialsRepository _credentialsRepo;
-    private readonly PortalConfigs _portalConfigs;  
+    private readonly PortalConfigs _portalConfigs;
 
     private readonly CookieContainer _cookieContainer;
+    private readonly HttpClient _httpClient;
 
     public IpmApiClient(
-        HttpClient httpClient,
         ILogger<IpmApiClient> logger,
         IOptions<PortalConfigs> portalConfigs,
         IPortalCredentialsRepository credentialsRepo)
     {
-        _httpClient = httpClient;
         _logger = logger;
         _credentialsRepo = credentialsRepo;
         _portalConfigs = portalConfigs.Value;
         _cookieContainer = new CookieContainer();
+        _httpClient = InitializeHttpClient();
+    }
 
+    private HttpClient InitializeHttpClient()
+    {
+        var handler = new HttpClientHandler
+        {
+            UseCookies = false, // Manual cookie management
+            AllowAutoRedirect = false // Per integration guide, avoid redirects
+        };
+        return new HttpClient(handler);
     }
 
     private void ConfigureHttpClient(PortalCredentialsEntity credentials, PortalConfig config)
@@ -113,7 +121,7 @@ public class IpmApiClient : IApiClient
                 // Include cookies from previous session
                 // var baseUrl = credentials.ApiBaseUrl;
                 var baseUrl = config.ApiBaseUrl;
-                var endpoint =  config.Endpoints.EmitInvoice;
+                var endpoint = config.Endpoints.EmitInvoice;
                 var fullUrl = new Uri(new Uri(baseUrl), endpoint);
                 var request = new HttpRequestMessage(HttpMethod.Post, fullUrl)
                 {
@@ -225,8 +233,8 @@ public class IpmApiClient : IApiClient
     private string SignXml(string xml, byte[] certificateData, string certificatePassword)
     {
         var certificate = X509CertificateLoader.LoadPkcs12(
-            certificateData, 
-            certificatePassword, 
+            certificateData,
+            certificatePassword,
             X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
 
         // Load XML document
@@ -259,7 +267,7 @@ public class IpmApiClient : IApiClient
 
         _logger.LogDebug("XML signed successfully using certificate: {Thumbprint}", certificate.Thumbprint);
 
-        return xmlDoc.OuterXml; 
+        return xmlDoc.OuterXml;
     }
 
     private NfseSubmissionResult ParseResponse(string responseXml)
