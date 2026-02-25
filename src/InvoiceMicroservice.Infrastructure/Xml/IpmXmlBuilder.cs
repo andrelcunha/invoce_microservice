@@ -38,7 +38,9 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         // Lookup service type codes - fallback to defaults if not found
         var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
-        var root = new XElement("nfse");
+        var root = new XElement("nfse",
+            new XAttribute("id", "nota")
+        );
         if (isTestMode)
             root.Add(new XElement("nfse_teste", "1"));
 
@@ -98,6 +100,8 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
     private async Task<XElement> BuildNfSectionAsync(Invoice invoice, CancellationToken cancellationToken)
     {
         var nf = new XElement("nf");
+
+        nf.Add(new XElement("serie_nfse", string.IsNullOrEmpty(invoice.Series.ToString()) ? "1" : invoice.Series.ToString())); // Default to "1" if series is not provided
 
         // Basic invoice values - use COMMA as decimal separator per IPM XSD
         nf.Add(new XElement("data_fato_gerador", DateTime.Today.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
@@ -410,11 +414,4 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 
         return tomador;
     }
-
-    // private async Task<string> GetTomCodeAsync(string city, string uf, CancellationToken cancellationToken)
-    // {
-    //     var municipality = await _municipalityRepo.GetByCityAndUfAsync(city, uf, cancellationToken);
-    //     return municipality?.TomCode ?? "8083";
-    // }
-
 }
