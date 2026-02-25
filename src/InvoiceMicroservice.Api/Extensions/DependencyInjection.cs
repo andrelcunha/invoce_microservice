@@ -5,12 +5,13 @@ using InvoiceMicroservice.Application.Commands.PortalCredentials;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Infrastructure.Repositories;
 using InvoiceMicroservice.Infrastructure.Xml;
+using InvoiceMicroservice.Api.Background;
 
 namespace InvoiceMicroservice.Api.Extensions;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddDependencyInjection(this IServiceCollection services)
+    public static IServiceCollection AddDependencies(this IServiceCollection services)
     {
         // Repositories
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
@@ -33,7 +34,13 @@ public static class DependencyInjection
         // Validators
         services.AddValidatorsFromAssemblyContaining<EmitInvoiceCommandValidator>();
         services.AddValidatorsFromAssemblyContaining<RegisterIssuerCommandValidator>();
-        
+
+        // Queue repository (if not already registered)
+        services.AddScoped<IInvoiceEmissionJobRepository, InvoiceEmissionJobRepository>();
+
+        // Background worker
+        services.AddHostedService<InvoiceEmissionWorker>();
+
         return services;
     }
 }

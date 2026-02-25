@@ -16,7 +16,7 @@ public class Program
         builder.Services.AddEFConfiguration(builder.Configuration);
         builder.Services.AddTaxConfiguration(builder.Configuration);
         builder.Services.AddApiClientConfiguration(builder.Configuration);
-        builder.Services.AddDependencyInjection();
+        builder.Services.AddDependencies();
         builder.Services.AddAuthorization();
         builder.Services.AddControllers();
         builder.Services.AddOpenApiConfiguration();
