@@ -8,11 +8,11 @@ namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
 public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 {
 
-    public  EmitInvoiceCommandValidator()
+    public EmitInvoiceCommandValidator()
     {
         RuleFor(x => x.ClientId)
             .NotEmpty().WithMessage("ClientId is required.");
-        
+
         RuleFor(x => x.IssuerCnpj)
             .NotEmpty().WithMessage("IssuerCnpj is required.")
             .Must(ValidationHelpers.BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
@@ -24,6 +24,14 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
     {
         public EmitInvoiceDataValidator()
         {
+            RuleFor(x => x.NfseSeries)
+                .GreaterThan(0).WithMessage("NfseSeries must be greater than zero.")
+                .LessThan(10000).WithMessage("NfseSeries must be less than 10000.");
+
+            RuleFor(x => x.NfseNumber)
+                .GreaterThan(0).WithMessage("NfseNumber must be greater than zero.")
+                .LessThan(1000000).WithMessage("NfseNumber must be less than 1000000.");
+
             RuleFor(x => x.Consumer).SetValidator(new ConsumerValidator());
 
             RuleFor(x => x.ServiceDescription)
@@ -40,7 +48,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
                 .LessThanOrEqualTo(DateTime.UtcNow).WithMessage("IssuedAt cannot be in the future.");
 
             RuleFor(x => x.ServiceTypeKey).MaximumLength(100).When(x => x.ServiceTypeKey != null);
-        
+
             // ISS rate validation: Brazilian municipalities can charge 2% to 5%
             RuleFor(x => x.IssRate)
                 .InclusiveBetween(0.02m, 0.05m)
@@ -85,7 +93,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 
             When(x => !string.IsNullOrEmpty(x.Email), () =>
             {
-                RuleFor(x =>x.Email)
+                RuleFor(x => x.Email)
                     .EmailAddress()
                     .WithMessage("Invalid email format.");
             });

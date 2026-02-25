@@ -16,13 +16,15 @@ public record EmitInvoiceCommand
 
 public record EmitInvoiceData
 {
+    public required int NfseSeries { get; init; }
+    public required int NfseNumber { get; init; }
     public required Consumer Consumer { get; init; }
     public required string ServiceDescription { get; init; }
     public required decimal Amount { get; init; }
     public DateTime IssuedAt { get; init; }
     public string? ServiceTypeKey { get; init; }
     public string? MunicipalTaxCode { get; init; }
-    
+
     /// <summary>
     /// ISS rate (Imposto Sobre Serviços) as percentage.
     /// Example: 5% = 0.05. Range: 2% to 5% depending on municipality and service.
@@ -46,20 +48,17 @@ public class EmitInvoiceCommandHandler
 {
     private readonly IInvoiceRepository _repository;
     private readonly IInvoiceXmlBuilderFactory _xmlBuilderFactory;
-    private readonly IApiClient _apiClient;
     private readonly IIssuerRepository _issuerRepository;
     private readonly ILogger<EmitInvoiceCommandHandler> _logger;
 
     public EmitInvoiceCommandHandler(
-            IInvoiceRepository repository, 
+            IInvoiceRepository repository,
             IInvoiceXmlBuilderFactory xmlBuilderFactory,
-            IApiClient apiClient,
             IIssuerRepository issuerRepository,
             ILogger<EmitInvoiceCommandHandler> logger)
     {
         _repository = repository;
         _xmlBuilderFactory = xmlBuilderFactory;
-        _apiClient = apiClient;
         _issuerRepository = issuerRepository;
         _logger = logger;
     }
@@ -75,14 +74,14 @@ public class EmitInvoiceCommandHandler
         if (!issuer.IsActive)
             throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} is inactive.");
 
-        _logger.LogInformation("Serialized address for issuer {IssuerCnpj}: {AddressJson}", issuer.Cnpj, issuer.AddressJson);        
+        _logger.LogInformation("Serialized address for issuer {IssuerCnpj}: {AddressJson}", issuer.Cnpj, issuer.AddressJson);
         var jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
-        
-        var issuerAddress = JsonSerializer.Deserialize<Address>(issuer.AddressJson, jsonOptions) 
+
+        var issuerAddress = JsonSerializer.Deserialize<Address>(issuer.AddressJson, jsonOptions)
             ?? throw new InvalidOperationException($"Invalid address data for issuer with CNPJ {issuerCnpj.Value}.");
         _logger.LogInformation("Deserialized IBGE Code for issuer {IssuerCnpj}: {IbgeCode}", issuer.Cnpj, issuerAddress.IbgeCode);
         var issuerDto = new IssuerDto
@@ -98,14 +97,18 @@ public class EmitInvoiceCommandHandler
         var issuerJson = JsonSerializer.Serialize(issuerDto);
         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
 
-        string ctsPisCofins = request.Data.PisCofinsCts.HasValue 
-            ? request.Data.PisCofinsCts.Value.ToString("D2") 
+
+
+        string ctsPisCofins = request.Data.PisCofinsCts.HasValue
+            ? request.Data.PisCofinsCts.Value.ToString("D2")
             : "00";
 
         var invoice = Invoice.Create(
             request.ClientId,
             issuerCnpj,
             issuerJson,
+            request.Data.NfseSeries,
+            request.Data.NfseNumber,
             consumerJson,
             request.Data.ServiceDescription,
             request.Data.Amount,
@@ -121,29 +124,29 @@ public class EmitInvoiceCommandHandler
             request.Data.IbsCbsCst
         );
 
-        await _repository.AddAsync(invoice, cancellationToken);
+        // await _repository.AddAsync(invoice, cancellationToken);
 
         // Factory selects IPM or Nacional builder based on issuer CNPJ
         var _xmlBuilder = await _xmlBuilderFactory.GetBuilderAsync(
-            issuerCnpj.Value, 
+            issuerCnpj.Value,
             cancellationToken);
 
         // Generate XML
         var xml = await _xmlBuilder.BuildInvoiceXmlAsync(
-            invoice, 
-            isTestMode: request.IsTestMode, 
+            invoice,
+            isTestMode: request.IsTestMode,
             cancellationToken);
-        
+
         // Store generated XML
         invoice.XmlPayload = xml;
-        
-        // Submit to IPM (File or API depending on configuration)
-        var result = await _apiClient.SubmitInvoiceAsync(
+
+        var apiClient = _xmlBuilder.GetApiClient();
+        var result = await apiClient.SubmitInvoiceAsync(
             xml,
             issuerCnpj.Value,
-            isTestMode: request.IsTestMode, 
+            isTestMode: request.IsTestMode,
             cancellationToken);
-        
+
         // Update invoice with submission result
         if (result.Success)
         {
@@ -158,8 +161,8 @@ public class EmitInvoiceCommandHandler
         {
             invoice.MarkAsFailed(string.Join("; ", result.Messages));
         }
-        
-        await _repository.UpdateAsync(invoice, cancellationToken);
+
+        // await _repository.UpdateAsync(invoice, cancellationToken);
 
         return invoice.Id;
     }

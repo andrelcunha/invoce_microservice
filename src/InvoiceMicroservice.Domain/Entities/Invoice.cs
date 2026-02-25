@@ -12,6 +12,9 @@ public class Invoice
 
     // Store full objects as JSONB in PGSQL
     public string IssuerData { get; set; } = null!; // JSON 
+
+    public required int Series { get; init; }
+    public required int Number { get; init; }
     public string ConsumerData { get; set; } = null!; // JSON
 
     public decimal Amount { get; set; }
@@ -51,13 +54,15 @@ public class Invoice
 
     public string? IbsCbsClassTrib { get; private set; }
     public string? IbsCbsCst { get; private set; }
-    
+
     private Invoice() { }
 
     public static Invoice Create(
         string clientId,
         Cnpj issuerCnpj,
         string issuerData,
+        int series,
+        int number,
         string consumerData,
         string serviceDescription,
         decimal amount,
@@ -79,6 +84,8 @@ public class Invoice
             ClientId = clientId,
             IssuerCnpj = issuerCnpj,
             IssuerData = issuerData,
+            Series = series,
+            Number = number,
             ConsumerData = consumerData,
             ServiceDescription = serviceDescription,
             Amount = amount,

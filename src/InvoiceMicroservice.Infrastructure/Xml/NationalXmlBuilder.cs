@@ -57,8 +57,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
             throw new InvalidOperationException($"No portal credentials found for issuer CNPJ {issuer_cnpj}");
 
         var root = El("DPS", new XAttribute("versao", "1.01"));
-        int serie = 1111; // Hardcoded for MVP
-        int numero = 9999; // Hardcoded for MVP TODO: Find a way to get real series/number
+        int serie = invoice.Series; // Hardcoded for MVP TODO: Find a way to get real series/number
+        int numero = invoice.Number; // Hardcoded for MVP TODO: Find a way to get real series/number
         var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
         var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes, serie, numero, isTestMode, cancellationToken);
