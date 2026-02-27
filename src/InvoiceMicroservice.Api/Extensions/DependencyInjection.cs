@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<IServiceTypeTaxMappingRepository, ServiceTypeTaxMappingRepository>();
         services.AddScoped<IIssuerRepository, IssuerRepository>();
         services.AddScoped<IPortalCredentialsRepository, PortalCredentialsRepository>();
+        services.AddScoped<IInvoiceEmissionResultRepository, InvoiceEmissionResultRepository>();
 
         // XML Builders (concrete implementations - one per portal type)
         services.AddScoped<IpmXmlBuilder>();
@@ -35,11 +36,12 @@ public static class DependencyInjection
         services.AddValidatorsFromAssemblyContaining<EmitInvoiceCommandValidator>();
         services.AddValidatorsFromAssemblyContaining<RegisterIssuerCommandValidator>();
 
-        // Queue repository (if not already registered)
+        // Queue repository
         services.AddScoped<IInvoiceEmissionJobRepository, InvoiceEmissionJobRepository>();
 
         // Background worker
         services.AddHostedService<InvoiceEmissionWorker>();
+
 
         return services;
     }

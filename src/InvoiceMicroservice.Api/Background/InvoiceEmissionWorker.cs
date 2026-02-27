@@ -1,13 +1,15 @@
+using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
-using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.ValueObjects;
 using System.Text.Json;
 
 namespace InvoiceMicroservice.Api.Background;
 
 public class InvoiceEmissionWorker(
+    IInvoiceEmissionJobRepository jobs,
+    IInvoiceEmissionResultRepository results,
     IServiceScopeFactory scopeFactory,
     ILogger<InvoiceEmissionWorker> logger) : BackgroundService
 {
@@ -103,25 +105,39 @@ public class InvoiceEmissionWorker(
 
                         invoice.XmlPayload = xml;
 
+                        var portalType = ResolvePortalType(xmlBuilder);
                         var apiClient = xmlBuilder.GetApiClient();
-                        var result = await apiClient.SubmitInvoiceAsync(
-                            xml,
-                            issuerCnpj.Value,
-                            request.IsTestMode,
-                            stoppingToken);
+                        var submit = await apiClient.SubmitInvoiceAsync(xml, issuerCnpj.Value, request.IsTestMode, stoppingToken);
 
-                        if (result.Success)
+                        await results.UpsertByJobIdAsync(new InvoiceEmissionResult
+                        {
+                            JobId = job.Id,
+                            IssuerCnpj = issuerCnpj.Value,
+                            PortalType = portalType,
+                            IssuedAt = request.Data.IssuedAt,
+                            NumeroDfe = submit.InvoiceNumber,
+                            SerieDfe = request.Data.NfseSeries.ToString(),
+                            CodStatus = submit.Success ? "SUCCESS" : "FAILED",
+                            StatusDescription = string.Join("; ", submit.Messages ?? []),
+                            Protocolo = submit.Protocol,
+                            VerificationCode = submit.VerificationCode,
+                            RequestXml = xml,
+                            ResponseRaw = submit.RawResponse,
+                            UpdatedAt = DateTime.UtcNow
+                        }, stoppingToken);
+
+                        if (submit.Success)
                         {
                             invoice.MarkAsEmitted(
-                                result.InvoiceNumber ?? string.Empty,
-                                result.Protocol ?? string.Empty,
-                                result.VerificationCode ?? string.Empty,
-                                result.RawResponse ?? string.Empty
+                                submit.InvoiceNumber ?? string.Empty,
+                                submit.Protocol ?? string.Empty,
+                                submit.VerificationCode ?? string.Empty,
+                                submit.RawResponse ?? string.Empty
                             );
                         }
                         else
                         {
-                            invoice.MarkAsFailed(string.Join("; ", result.Messages));
+                            invoice.MarkAsFailed(string.Join("; ", submit.Messages));
                         }
 
                         await invoiceRepository.UpdateAsync(invoice, stoppingToken);
@@ -131,7 +147,7 @@ public class InvoiceEmissionWorker(
                             "Processed invoice emission job {JobId}. InvoiceId={InvoiceId}, Success={Success}",
                             job.Id,
                             invoice.Id,
-                            result.Success);
+                            submit.Success);
                     }
                     catch (Exception ex)
                     {
@@ -156,4 +172,9 @@ public class InvoiceEmissionWorker(
             }
         }
     }
+
+    private static string ResolvePortalType(object builder) =>
+        builder.GetType().Name.Contains("National", StringComparison.OrdinalIgnoreCase)
+            ? "Nacional"
+            : "Ipm";
 }
