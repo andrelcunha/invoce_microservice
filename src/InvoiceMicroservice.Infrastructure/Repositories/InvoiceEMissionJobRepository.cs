@@ -20,18 +20,18 @@ public class InvoiceEmissionJobRepository(InvoiceDbContext db) : IInvoiceEmissio
 
         var claimed = await db.InvoiceEmissionJobs
             .FromSqlInterpolated($@"
-                UPDATE invoice_emission_jobs j
-                SET status = 'Processing',
-                    locked_at = {now},
-                    locked_by = {workerId},
-                    attempts = j.attempts + 1,
-                    updated_at = {now}
-                WHERE j.id IN (
-                    SELECT id
-                    FROM invoice_emission_jobs
-                    WHERE status IN ('Pending','FailedRetryable')
-                        AND (next_retry_at IS NULL OR next_retry_at <= {now})
-                    ORDER BY created_at
+                UPDATE ""invoice_emission_jobs"" j
+                SET ""Status"" = 'Processing',
+                    ""LockedAt"" = {now},
+                    ""LockedBy"" = {workerId},
+                    ""Attempts"" = j.""Attempts"" + 1,
+                    ""UpdatedAt"" = {now}
+                WHERE j.""Id"" IN (
+                    SELECT ""Id""
+                    FROM ""invoice_emission_jobs""
+                    WHERE ""Status"" IN ('Pending','FailedRetryable')
+                        AND (""NextRetryAt"" IS NULL OR ""NextRetryAt"" <= {now})
+                    ORDER BY ""CreatedAt""
                     FOR UPDATE SKIP LOCKED
                     LIMIT {batchSize}
                 )
