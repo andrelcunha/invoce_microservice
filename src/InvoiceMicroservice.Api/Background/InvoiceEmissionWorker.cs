@@ -47,6 +47,8 @@ public class InvoiceEmissionWorker(
 
                         var request = payload.Command;
                         var issuerCnpj = new Cnpj(request.IssuerCnpj);
+                        if (string.IsNullOrWhiteSpace(issuerCnpj.Value))
+                            throw new InvalidOperationException($"Invalid issuer CNPJ in job {job.Id}.");
 
                         var issuer = await issuerRepository.GetByCnpjAsync(issuerCnpj, stoppingToken)
                             ?? throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} not found.");
@@ -121,6 +123,8 @@ public class InvoiceEmissionWorker(
                             VerificationCode = submit.VerificationCode,
                             RequestXml = xml,
                             ResponseRaw = submit.RawResponse,
+                            ChaveAcesso = submit.ChaveAcesso,
+                            CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         }, stoppingToken);
 

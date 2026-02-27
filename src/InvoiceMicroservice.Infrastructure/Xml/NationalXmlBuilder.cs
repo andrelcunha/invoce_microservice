@@ -46,15 +46,33 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
 
     public PortalType GetPortalType() => PortalType.Nacional;
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
-        var issuer = JsonSerializer.Deserialize<IssuerDto>(invoice.IssuerData)!;
-        _logger.LogInformation("Building XML for invoice {InvoiceId} issued by {IssuerCnpj}", invoice.Id, issuer.Cnpj);
-        var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
-        var issuer_cnpj = Helpers.StripDots(issuer.Cnpj);
-        var credentials = await _credentialsRepo.GetByIssuerCnpjAsync(issuer_cnpj, cancellationToken);
-        if (credentials == null)
-            throw new InvalidOperationException($"No portal credentials found for issuer CNPJ {issuer_cnpj}");
+        var issuer = JsonSerializer.Deserialize<IssuerDto>(invoice.IssuerData, JsonOptions)
+            ?? throw new InvalidOperationException("Invalid issuer payload in invoice.IssuerData.");
+
+        if (string.IsNullOrWhiteSpace(issuer.Cnpj))
+            throw new InvalidOperationException("Issuer CNPJ is missing in invoice.IssuerData.");
+
+        var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData, JsonOptions)
+            ?? throw new InvalidOperationException("Invalid consumer payload in invoice.ConsumerData.");
+
+        _logger.LogInformation(
+            "Building XML for invoice {InvoiceId} issued by {IssuerCnpj}",
+            invoice.Id, issuer.Cnpj);
+
+        var issuerCnpj = Helpers.OnlyDigits(issuer.Cnpj);
+        if (issuerCnpj.Length != 14)
+            throw new InvalidOperationException($"Issuer CNPJ is invalid after normalization: '{issuer.Cnpj}'.");
+
+        var credentials = await _credentialsRepo.GetByIssuerCnpjAsync(issuerCnpj, cancellationToken);
+        if (credentials is null)
+            throw new InvalidOperationException($"No portal credentials found for issuer CNPJ {issuerCnpj}");
 
         var root = El("DPS", new XAttribute("versao", "1.01"));
         int serie = invoice.Series; // Hardcoded for MVP TODO: Find a way to get real series/number

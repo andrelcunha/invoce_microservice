@@ -16,7 +16,7 @@ public interface IApiClient
     Task<NfseSubmissionResult> SubmitInvoiceAsync(
         string xml,
         string issuerCnpj,
-        bool isTestMode = true, 
+        bool isTestMode = true,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -26,7 +26,7 @@ public interface IApiClient
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Current status and invoice details</returns>
     Task<InvoiceQueryResult> QueryInvoiceAsync(
-        string protocol, 
+        string protocol,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -37,15 +37,15 @@ public interface IApiClient
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Cancellation confirmation</returns>
     Task<InvoiceCancellationResult> CancelInvoiceAsync(
-        string invoiceNumber, 
-        string cancellationReason, 
+        string invoiceNumber,
+        string cancellationReason,
         CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Result of NFS-e submission to IPM or Nacional portal.
 /// </summary>
-public record NfseSubmissionResult
+public class NfseSubmissionResult
 {
     /// <summary>
     /// Whether submission was successful.
@@ -81,6 +81,11 @@ public record NfseSubmissionResult
     /// Raw XML/JSON response from IPM or Nacional portal (for audit).
     /// </summary>
     public string? RawResponse { get; init; }
+
+    /// <summary>
+    /// For Nacional portal: NFSe retrieval key (Chave de Acesso) for future queries/cancellations.
+    /// </summary>
+    public string? ChaveAcesso { get; init; }
 }
 
 /// <summary>

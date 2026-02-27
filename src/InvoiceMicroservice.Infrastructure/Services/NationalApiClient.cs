@@ -154,13 +154,16 @@ public class NationalApiClient : IApiClient
                 "DPS submitted successfully - Response: {Response}",
                 responseContent);
 
-            var submissionResponse = JsonSerializer.Deserialize<NationalNfseSuccessResponse>(responseContent);
+            var submissionResponse = JsonSerializer.Deserialize<NationalNfseSuccessResponse>(responseContent, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
             if (submissionResponse == null)
             {
                 _logger.LogError("Failed to deserialize National API response: {Response}", responseContent);
                 throw new InvalidOperationException("Invalid response from National API");
             }
-            if (submissionResponse.Alertas.Count > 0)
+            if (submissionResponse.Alertas != null && submissionResponse.Alertas.Count > 0)
             {
                 _logger.LogWarning(
                     "National API returned alerts: {Alerts}",
@@ -182,7 +185,9 @@ public class NationalApiClient : IApiClient
             var result = new NfseSubmissionResult
             {
                 Success = true,
-                Protocol = null // Parse protocol from responseContent if available
+                Protocol = null, // Parse protocol from responseContent if available
+                RawResponse = responseContent,
+                ChaveAcesso = submissionResponse.ChaveAcesso
             };
 
             return result;
