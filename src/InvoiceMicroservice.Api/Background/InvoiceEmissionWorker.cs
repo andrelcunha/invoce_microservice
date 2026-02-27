@@ -1,6 +1,5 @@
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
-using Microsoft.Extensions.DependencyInjection;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.ValueObjects;
 using System.Text.Json;
@@ -8,8 +7,6 @@ using System.Text.Json;
 namespace InvoiceMicroservice.Api.Background;
 
 public class InvoiceEmissionWorker(
-    IInvoiceEmissionJobRepository jobs,
-    IInvoiceEmissionResultRepository results,
     IServiceScopeFactory scopeFactory,
     ILogger<InvoiceEmissionWorker> logger) : BackgroundService
 {
@@ -28,6 +25,7 @@ public class InvoiceEmissionWorker(
             {
                 using var scope = scopeFactory.CreateScope();
                 var jobs = scope.ServiceProvider.GetRequiredService<IInvoiceEmissionJobRepository>();
+                var results = scope.ServiceProvider.GetRequiredService<IInvoiceEmissionResultRepository>();
                 var issuerRepository = scope.ServiceProvider.GetRequiredService<IIssuerRepository>();
                 var invoiceRepository = scope.ServiceProvider.GetRequiredService<IInvoiceRepository>();
                 var xmlBuilderFactory = scope.ServiceProvider.GetRequiredService<IInvoiceXmlBuilderFactory>();
@@ -137,7 +135,7 @@ public class InvoiceEmissionWorker(
                         }
                         else
                         {
-                            invoice.MarkAsFailed(string.Join("; ", submit.Messages));
+                            invoice.MarkAsFailed(string.Join("; ", submit.Messages ?? []));
                         }
 
                         await invoiceRepository.UpdateAsync(invoice, stoppingToken);
