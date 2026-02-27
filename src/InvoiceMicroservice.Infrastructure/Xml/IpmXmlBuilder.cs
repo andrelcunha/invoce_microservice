@@ -30,10 +30,46 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 
     public IApiClient GetApiClient() => _apiClient;
 
-    public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
+    public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode, CancellationToken cancellationToken)
     {
-        var issuer = JsonSerializer.Deserialize<IssuerDto>(invoice.IssuerData)!;
-        var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData)!;
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        var issuer = JsonSerializer.Deserialize<IssuerDto>(invoice.IssuerData, jsonOptions)
+            ?? throw new InvalidOperationException("IpmXmlBuilder: issuer payload deserialization returned null.");
+
+        var consumer = JsonSerializer.Deserialize<Consumer>(invoice.ConsumerData, jsonOptions)
+            ?? throw new InvalidOperationException("IpmXmlBuilder: consumer payload deserialization returned null.");
+
+        if (issuer.Address is null)
+            throw new InvalidOperationException("IpmXmlBuilder: issuer.Address is null.");
+
+        if (string.IsNullOrWhiteSpace(issuer.Address.City))
+            throw new InvalidOperationException("IpmXmlBuilder: issuer.Address.City is null/empty.");
+
+        if (string.IsNullOrWhiteSpace(issuer.Address.Uf))
+            throw new InvalidOperationException("IpmXmlBuilder: issuer.Address.Uf is null/empty.");
+
+        if (consumer.Address is null)
+            throw new InvalidOperationException("IpmXmlBuilder: consumer.Address is null.");
+
+        if (string.IsNullOrWhiteSpace(invoice.ServiceTypeKey))
+            throw new InvalidOperationException("IpmXmlBuilder: invoice.ServiceTypeKey is null/empty.");
+
+        // var serviceType = await _serviceTypeTaxMappingRepository
+        //     .GetByServiceTypeKeyAsync(invoice.ServiceTypeKey, cancellationToken);
+
+        // if (serviceType is null)
+        //     throw new InvalidOperationException($"IpmXmlBuilder: no active ServiceTypeTaxMapping for key '{invoice.ServiceTypeKey}'.");
+
+        // // Optional: validate required mapping fields used by XML composition
+        // if (string.IsNullOrWhiteSpace(serviceType.TaxSituationCode))
+        //     throw new InvalidOperationException("IpmXmlBuilder: TaxSituationCode is null/empty.");
+
+        // if (string.IsNullOrWhiteSpace(serviceType.ServiceListCode))
+        //     throw new InvalidOperationException("IpmXmlBuilder: ServiceListCode is null/empty.");
 
         // Lookup service type codes - fallback to defaults if not found
         var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);

@@ -13,6 +13,11 @@ namespace InvoiceMicroservice.Infrastructure.Xml;
 /// </summary>
 public class InvoiceXmlBuilderFactory : IInvoiceXmlBuilderFactory
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly IIssuerRepository _issuerRepository;
     private readonly IServiceProvider _serviceProvider;
@@ -33,7 +38,7 @@ public class InvoiceXmlBuilderFactory : IInvoiceXmlBuilderFactory
     }
 
     public async Task<IInvoiceXmlBuilder> GetBuilderAsync(
-        string issuerCnpj, 
+        string issuerCnpj,
         CancellationToken cancellationToken = default)
     {
         var cnpj = new Cnpj(issuerCnpj);
@@ -41,11 +46,14 @@ public class InvoiceXmlBuilderFactory : IInvoiceXmlBuilderFactory
         var credentials = issuer?.PortalCredentials;
         if (!string.IsNullOrWhiteSpace(issuer?.AddressJson))
         {
-            Address address = issuer != null ? JsonSerializer.Deserialize<Address>(issuer!.AddressJson??"{}") : null;
+            Address address = string.IsNullOrWhiteSpace(issuer.AddressJson)
+                ? null
+                : JsonSerializer.Deserialize<Address>(issuer.AddressJson, JsonOptions);
+
             if (credentials == null)
             {
                 _logger.LogWarning(
-                    "No portal credentials found for CNPJ {Cnpj}. Cannot determine portal type.", 
+                    "No portal credentials found for CNPJ {Cnpj}. Cannot determine portal type.",
                     issuerCnpj);
                 throw new InvalidOperationException(
                     $"Portal credentials not configured for CNPJ {issuerCnpj}. " +
@@ -53,7 +61,7 @@ public class InvoiceXmlBuilderFactory : IInvoiceXmlBuilderFactory
             }
 
             _logger.LogInformation(
-                "Selected {PortalType} XML builder for CNPJ {Cnpj} (city: {City}/{Uf})",
+                "Selected {Portal} XML builder for CNPJ {Cnpj} (city: {City}/{Uf})",
                 credentials.PortalType,
                 issuerCnpj,
                 address?.City,
