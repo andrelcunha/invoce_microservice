@@ -30,6 +30,13 @@ InvoiceMicroservice.sln
     └── InvoiceMicroservice.IntegrationTests/
 ```
 
+## Dependency Policy
+
+- Keep dependencies lean and aligned with current project size.
+- Do **not** introduce `MediatR` or `AutoMapper`.
+- Prefer direct DI from controllers to handlers/repositories and explicit/manual mapping in handlers/builders.
+- Keep validation in FluentValidation and avoid adding orchestration frameworks unless a clear cross-cutting need appears.
+
 ## How to Run
 
 ### Prerequisites
