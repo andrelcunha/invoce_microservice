@@ -24,42 +24,35 @@ public record EmitInvoiceData
     public DateTime IssuedAt { get; init; }
     public string? ServiceTypeKey { get; init; }
     public string? MunicipalTaxCode { get; init; }
-
-    /// <summary>
-    /// ISS rate (Imposto Sobre Serviços) as percentage.
-    /// Example: 5% = 0.05. Range: 2% to 5% depending on municipality and service.
-    /// This is the CURRENT tax (separate from IBS/CBS which start in 2026).
-    /// </summary>
     public decimal IssRate { get; init; }
-
     public int? PisCofinsCts { get; init; }
-
     public decimal AliquotaPis { get; init; }
     public decimal AliquotaCofins { get; init; }
-
     public string TipoRetencaoPisCofins { get; init; } = null!;
-
     public string IbsCbsClassTrib { get; init; } = null!;
-
     public string IbsCbsCst { get; init; } = null!;
+}
+
+public record EmitInvoiceJobPayload
+{
+    public int SchemaVersion { get; init; } = 1;
+    public DateTime EnqueuedAtUtc { get; init; } = DateTime.UtcNow;
+    public required EmitInvoiceCommand Command { get; init; }
 }
 
 public class EmitInvoiceCommandHandler
 {
-    private readonly IInvoiceRepository _repository;
-    private readonly IInvoiceXmlBuilderFactory _xmlBuilderFactory;
     private readonly IIssuerRepository _issuerRepository;
+    private readonly IInvoiceEmissionJobRepository _jobRepository;
     private readonly ILogger<EmitInvoiceCommandHandler> _logger;
 
     public EmitInvoiceCommandHandler(
-            IInvoiceRepository repository,
-            IInvoiceXmlBuilderFactory xmlBuilderFactory,
             IIssuerRepository issuerRepository,
+            IInvoiceEmissionJobRepository jobRepository,
             ILogger<EmitInvoiceCommandHandler> logger)
     {
-        _repository = repository;
-        _xmlBuilderFactory = xmlBuilderFactory;
         _issuerRepository = issuerRepository;
+        _jobRepository = jobRepository;
         _logger = logger;
     }
 
@@ -67,103 +60,42 @@ public class EmitInvoiceCommandHandler
     {
         var issuerCnpj = new Cnpj(request.IssuerCnpj);
 
-        // fetch issuer from db
+        // Keep lightweight preconditions in API path
         var issuer = await _issuerRepository.GetByCnpjAsync(issuerCnpj, cancellationToken)
             ?? throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} not found.");
 
         if (!issuer.IsActive)
             throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} is inactive.");
 
-        _logger.LogInformation("Serialized address for issuer {IssuerCnpj}: {AddressJson}", issuer.Cnpj, issuer.AddressJson);
-        var jsonOptions = new JsonSerializerOptions
+        var payload = new EmitInvoiceJobPayload
         {
-            PropertyNameCaseInsensitive = true,
+            Command = request
+        };
+
+        var payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+        {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        var job = new InvoiceEmissionJob
+        {
+            Id = Guid.NewGuid(),
+            IssuerCnpj = issuerCnpj.Value,
+            PayloadJson = payloadJson,
+            Status = InvoiceEmissionJobStatus.Pending,
+            Attempts = 0,
+            NextRetryAt = null,
+            LastError = null,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         };
 
-        var issuerAddress = JsonSerializer.Deserialize<Address>(issuer.AddressJson, jsonOptions)
-            ?? throw new InvalidOperationException($"Invalid address data for issuer with CNPJ {issuerCnpj.Value}.");
-        _logger.LogInformation("Deserialized IBGE Code for issuer {IssuerCnpj}: {IbgeCode}", issuer.Cnpj, issuerAddress.IbgeCode);
-        var issuerDto = new IssuerDto
-        {
-            Cnpj = issuer.Cnpj.Value,
-            MunicipalInscription = issuer.MunicipalInscription,
-            Name = issuer.TradeName,
-            Cnae = issuer.Cnae,
-            Address = issuerAddress,
-            RegimeTributario = issuer.RegimeTributario,
-            SubRegimeTributario = issuer.SubRegimeTributario
-        };
-        var issuerJson = JsonSerializer.Serialize(issuerDto);
-        var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
+        await _jobRepository.AddAsync(job, cancellationToken);
 
+        _logger.LogInformation(
+            "Invoice emission job enqueued. JobId={JobId}, IssuerCnpj={IssuerCnpj}, ClientId={ClientId}",
+            job.Id, issuerCnpj.Value, request.ClientId);
 
-
-        string ctsPisCofins = request.Data.PisCofinsCts.HasValue
-            ? request.Data.PisCofinsCts.Value.ToString("D2")
-            : "00";
-
-        var invoice = Invoice.Create(
-            request.ClientId,
-            issuerCnpj,
-            issuerJson,
-            request.Data.NfseSeries,
-            request.Data.NfseNumber,
-            consumerJson,
-            request.Data.ServiceDescription,
-            request.Data.Amount,
-            request.Data.IssuedAt,
-            request.Data.IssRate,
-            request.Data.MunicipalTaxCode,
-            ctsPisCofins,
-            request.Data.ServiceTypeKey,
-            request.Data.AliquotaPis,
-            request.Data.AliquotaCofins,
-            request.Data.TipoRetencaoPisCofins,
-            request.Data.IbsCbsClassTrib,
-            request.Data.IbsCbsCst
-        );
-
-        // await _repository.AddAsync(invoice, cancellationToken);
-
-        // Factory selects IPM or Nacional builder based on issuer CNPJ
-        var _xmlBuilder = await _xmlBuilderFactory.GetBuilderAsync(
-            issuerCnpj.Value,
-            cancellationToken);
-
-        // Generate XML
-        var xml = await _xmlBuilder.BuildInvoiceXmlAsync(
-            invoice,
-            isTestMode: request.IsTestMode,
-            cancellationToken);
-
-        // Store generated XML
-        invoice.XmlPayload = xml;
-
-        var apiClient = _xmlBuilder.GetApiClient();
-        var result = await apiClient.SubmitInvoiceAsync(
-            xml,
-            issuerCnpj.Value,
-            isTestMode: request.IsTestMode,
-            cancellationToken);
-
-        // Update invoice with submission result
-        if (result.Success)
-        {
-            invoice.MarkAsEmitted(
-                result.InvoiceNumber ?? "",
-                result.Protocol ?? "",
-                result.VerificationCode ?? "",
-                result.RawResponse ?? xml
-            );
-        }
-        else
-        {
-            invoice.MarkAsFailed(string.Join("; ", result.Messages));
-        }
-
-        // await _repository.UpdateAsync(invoice, cancellationToken);
-
-        return invoice.Id;
+        return job.Id;
     }
 }
