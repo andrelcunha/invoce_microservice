@@ -13,6 +13,7 @@ public class InvoiceDbContext : DbContext
     public DbSet<IssuerEntity> Issuers => Set<IssuerEntity>();
     public DbSet<PortalCredentialsEntity> PortalCredentials => Set<PortalCredentialsEntity>();
     public DbSet<InvoiceEmissionJob> InvoiceEmissionJobs => Set<InvoiceEmissionJob>();
+    public DbSet<InvoiceEmissionResult> InvoiceEmissionResults => Set<InvoiceEmissionResult>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -312,6 +313,47 @@ public class InvoiceDbContext : DbContext
 
             b.HasIndex(x => new { x.Status, x.NextRetryAt, x.CreatedAt });
             b.HasIndex(x => x.IssuerCnpj);
+        });
+
+        modelBuilder.Entity<InvoiceEmissionResult>(b =>
+        {
+            b.ToTable("invoice_emission_results");
+
+            b.HasKey(x => x.Id);
+
+            b.Property(x => x.IssuerCnpj)
+                .HasMaxLength(14)
+                .IsRequired();
+
+            b.Property(x => x.PortalType)
+                .HasMaxLength(32)
+                .IsRequired();
+
+            b.Property(x => x.NumeroDfe).HasMaxLength(64);
+            b.Property(x => x.SerieDfe).HasMaxLength(32);
+            b.Property(x => x.CodStatus).HasMaxLength(32);
+            b.Property(x => x.StatusDescription).HasMaxLength(512);
+            b.Property(x => x.Protocolo).HasMaxLength(128);
+            b.Property(x => x.ChaveAcesso).HasMaxLength(128);
+            b.Property(x => x.VerificationCode).HasMaxLength(128);
+            b.Property(x => x.DocumentUrl).HasMaxLength(2048);
+
+            b.Property(x => x.RequestXml).HasColumnType("text");
+            b.Property(x => x.ResponseRaw).HasColumnType("text");
+            b.Property(x => x.AlertsJson).HasColumnType("text");
+            b.Property(x => x.ErrorMessage).HasColumnType("text");
+
+            b.Property(x => x.CreatedAt).IsRequired();
+            b.Property(x => x.UpdatedAt).IsRequired();
+
+            b.HasIndex(x => x.JobId).IsUnique();
+            b.HasIndex(x => x.IssuerCnpj);
+            b.HasIndex(x => x.ChaveAcesso);
+
+            b.HasOne(x => x.Job)
+                .WithOne()
+                .HasForeignKey<InvoiceEmissionResult>(x => x.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
