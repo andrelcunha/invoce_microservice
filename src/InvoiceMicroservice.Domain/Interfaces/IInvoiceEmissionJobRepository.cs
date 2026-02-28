@@ -5,6 +5,7 @@ namespace InvoiceMicroservice.Domain.Interfaces;
 public interface IInvoiceEmissionJobRepository
 {
     Task AddAsync(InvoiceEmissionJob job, CancellationToken ct = default);
+    Task<InvoiceEmissionJob?> GetByIdAsync(Guid jobId, CancellationToken ct = default);
     Task<IReadOnlyList<InvoiceEmissionJob>> ClaimPendingAsync(
         int batchSize,
         string workerId,

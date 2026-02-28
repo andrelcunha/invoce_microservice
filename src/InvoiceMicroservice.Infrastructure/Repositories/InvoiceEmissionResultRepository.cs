@@ -7,6 +7,13 @@ namespace InvoiceMicroservice.Infrastructure.Repositories;
 
 public sealed class InvoiceEmissionResultRepository(InvoiceDbContext db) : IInvoiceEmissionResultRepository
 {
+    public Task<InvoiceEmissionResult?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
+    {
+        return db.InvoiceEmissionResults
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.JobId == jobId, ct);
+    }
+
     public async Task UpsertByJobIdAsync(InvoiceEmissionResult result, CancellationToken ct = default)
     {
         var existing = await db.InvoiceEmissionResults

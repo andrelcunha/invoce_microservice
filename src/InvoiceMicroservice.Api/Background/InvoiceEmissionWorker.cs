@@ -27,7 +27,6 @@ public class InvoiceEmissionWorker(
                 var jobs = scope.ServiceProvider.GetRequiredService<IInvoiceEmissionJobRepository>();
                 var results = scope.ServiceProvider.GetRequiredService<IInvoiceEmissionResultRepository>();
                 var issuerRepository = scope.ServiceProvider.GetRequiredService<IIssuerRepository>();
-                var invoiceRepository = scope.ServiceProvider.GetRequiredService<IInvoiceRepository>();
                 var xmlBuilderFactory = scope.ServiceProvider.GetRequiredService<IInvoiceXmlBuilderFactory>();
 
                 var batch = await jobs.ClaimPendingAsync(batchSize: 10, workerId, stoppingToken);
@@ -98,12 +97,8 @@ public class InvoiceEmissionWorker(
                             request.Data.IbsCbsCst
                         );
 
-                        await invoiceRepository.AddAsync(invoice, stoppingToken);
-
                         var xmlBuilder = await xmlBuilderFactory.GetBuilderAsync(issuerCnpj.Value, stoppingToken);
                         var xml = await xmlBuilder.BuildInvoiceXmlAsync(invoice, request.IsTestMode, stoppingToken);
-
-                        invoice.XmlPayload = xml;
 
                         var portalType = ResolvePortalType(xmlBuilder);
                         var apiClient = xmlBuilder.GetApiClient();
@@ -124,31 +119,15 @@ public class InvoiceEmissionWorker(
                             RequestXml = xml,
                             ResponseRaw = submit.RawResponse,
                             ChaveAcesso = submit.ChaveAcesso,
+                            ErrorMessage = submit.Success ? null : string.Join("; ", submit.Messages ?? []),
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         }, stoppingToken);
-
-                        if (submit.Success)
-                        {
-                            invoice.MarkAsEmitted(
-                                submit.InvoiceNumber ?? string.Empty,
-                                submit.Protocol ?? string.Empty,
-                                submit.VerificationCode ?? string.Empty,
-                                submit.RawResponse ?? string.Empty
-                            );
-                        }
-                        else
-                        {
-                            invoice.MarkAsFailed(string.Join("; ", submit.Messages ?? []));
-                        }
-
-                        await invoiceRepository.UpdateAsync(invoice, stoppingToken);
                         await jobs.MarkSucceededAsync(job.Id, stoppingToken);
 
                         logger.LogInformation(
-                            "Processed invoice emission job {JobId}. InvoiceId={InvoiceId}, Success={Success}",
+                            "Processed invoice emission job {JobId}. Success={Success}",
                             job.Id,
-                            invoice.Id,
                             submit.Success);
                     }
                     catch (Exception ex)
@@ -162,6 +141,17 @@ public class InvoiceEmissionWorker(
                         DateTime? retryAt = isPermanent
                             ? null
                             : DateTime.UtcNow.AddSeconds(Math.Pow(2, Math.Max(1, job.Attempts)) * 15);
+
+                        await results.UpsertByJobIdAsync(new InvoiceEmissionResult
+                        {
+                            JobId = job.Id,
+                            IssuerCnpj = job.IssuerCnpj,
+                            PortalType = "Unknown",
+                            CodStatus = "FAILED",
+                            StatusDescription = ex.Message,
+                            ErrorMessage = ex.ToString(),
+                            UpdatedAt = DateTime.UtcNow
+                        }, stoppingToken);
 
                         await jobs.MarkFailedAsync(job.Id, ex.Message, permanent: isPermanent, retryAt, stoppingToken);
                     }

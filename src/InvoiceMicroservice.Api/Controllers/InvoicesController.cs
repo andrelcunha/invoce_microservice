@@ -12,16 +12,19 @@ public class InvoicesController : ControllerBase
 {
     private readonly IValidator<EmitInvoiceCommand> _validator;
     private readonly EmitInvoiceCommandHandler _handler;
-    private readonly IInvoiceRepository _repository;
+    private readonly IInvoiceEmissionJobRepository _jobs;
+    private readonly IInvoiceEmissionResultRepository _results;
 
     public InvoicesController(
         IValidator<EmitInvoiceCommand> validator,
         EmitInvoiceCommandHandler handler,
-        IInvoiceRepository repository)
+        IInvoiceEmissionJobRepository jobs,
+        IInvoiceEmissionResultRepository results)
     {
         _validator = validator;
         _handler = handler;
-        _repository = repository;
+        _jobs = jobs;
+        _results = results;
     }
 
     /// <summary>
@@ -65,26 +68,41 @@ public class InvoicesController : ControllerBase
         Guid id,
         CancellationToken ct)
     {
-        var invoice = await _repository.GetByIdAsync(id, ct);
-        if (invoice is null)
+        var job = await _jobs.GetByIdAsync(id, ct);
+        if (job is null)
         {
             return NotFound();
         }
 
+        var result = await _results.GetByJobIdAsync(id, ct);
+
         return Ok(new
         {
-            invoice.Id,
-            invoice.Status,
-            invoice.ExternalInvoiceId,
-            // invoice.ExternalProtocol,
-            // invoice.VerificationCode,
-            invoice.XmlPayload,
-            // invoice.ResponsePayload,
-            // invoice.ErrorMessage,
-            invoice.RetryCount,
-            invoice.CreatedAt,
-            invoice.IssuedAt,
-            invoice.UpdatedAt
+            JobId = job.Id,
+            JobStatus = job.Status.ToString(),
+            job.Attempts,
+            job.MaxAttempts,
+            job.LastError,
+            job.CreatedAt,
+            job.UpdatedAt,
+            Result = result is null
+                ? null
+                : new
+                {
+                    result.CodStatus,
+                    result.StatusDescription,
+                    result.NumeroDfe,
+                    result.SerieDfe,
+                    result.Protocolo,
+                    result.ChaveAcesso,
+                    result.VerificationCode,
+                    result.DocumentUrl,
+                    result.IssuedAt,
+                    result.ProviderProcessedAt,
+                    result.ErrorMessage,
+                    result.CreatedAt,
+                    result.UpdatedAt
+                }
         });
     }
 }

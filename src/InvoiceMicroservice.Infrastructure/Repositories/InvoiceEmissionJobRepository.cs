@@ -13,6 +13,13 @@ public class InvoiceEmissionJobRepository(InvoiceDbContext db) : IInvoiceEmissio
         await db.SaveChangesAsync(ct);
     }
 
+    public Task<InvoiceEmissionJob?> GetByIdAsync(Guid jobId, CancellationToken ct = default)
+    {
+        return db.InvoiceEmissionJobs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == jobId, ct);
+    }
+
     public async Task<IReadOnlyList<InvoiceEmissionJob>> ClaimPendingAsync(int batchSize, string workerId, CancellationToken ct = default)
     {
         // PostgreSQL atomic claim using FOR UPDATE SKIP LOCKED + UPDATE ... RETURNING
