@@ -20,7 +20,7 @@ public interface IInvoiceXmlBuilderFactory
 /// </summary>
 public interface IInvoiceXmlBuilder
 {
-    Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default);
+    Task<string> BuildInvoiceXmlAsync(InvoiceXmlPayload invoice, bool isTestMode = true, CancellationToken cancellationToken = default);
 
     PortalType GetPortalType();
 

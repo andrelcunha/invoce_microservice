@@ -1,5 +1,3 @@
-using InvoiceMicroservice.Domain.Enums;
-
 namespace InvoiceMicroservice.Domain.Entities;
 
 public class IssuerDto
@@ -10,7 +8,7 @@ public class IssuerDto
     public string Cnae { get; set; } = null!;
     public Address Address { get; set; } = null!;
     public RegimeTributario RegimeTributario { get; set; }
-    public SubRegimeTributario SubRegimeTributario { get; set;}
+    public SubRegimeTributario SubRegimeTributario { get; set; }
 }
 
 public class Address
@@ -39,7 +37,7 @@ public enum RegimeTributario
 {
     SimplesNacional = 1,
     LucroPresumido = 2,
-    LucroReal = 3, 
+    LucroReal = 3,
     Outro = 4
 }
 

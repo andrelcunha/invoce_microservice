@@ -21,7 +21,7 @@ public class IpmXmlBuilderTests
     {
         _mockServiceTaxRepo = new Mock<IServiceTypeTaxMappingRepository>();
         _mockMunicipalityRepo = new Mock<IMunicipalityRepository>();
-        
+
         _taxConfig = new TaxConfig
         {
             PIbsUf = 0.025m,
@@ -101,7 +101,7 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var nf = doc.Root?.Element("nf");
         nf.Should().NotBeNull();
-        
+
         // Check mandatory fields - now use comma separator per IPM XSD
         nf!.Element("data_fato_gerador").Should().NotBeNull();
         nf.Element("valor_total").Should().NotBeNull();
@@ -123,7 +123,7 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var pisCofins = doc.Root?.Element("nf")?.Element("pis_cofins");
         pisCofins.Should().NotBeNull();
-        
+
         pisCofins!.Element("cst")!.Value.Should().Be("01");
         pisCofins.Element("tipo_retencao")!.Value.Should().Be("2");
         pisCofins.Element("base_calculo")!.Value.Should().Be("1500,00");
@@ -145,11 +145,11 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var ibscbs = doc.Root?.Element("IBSCBS");
         ibscbs.Should().NotBeNull();
-        
+
         ibscbs!.Element("finNFSe")!.Value.Should().Be("0");
         ibscbs.Element("indFinal")!.Value.Should().Be("1");
         ibscbs.Element("cIndOp")!.Value.Should().Be("140101");
-        
+
         var gIBSCBS = ibscbs.Element("valores")?.Element("trib")?.Element("gIBSCBS");
         gIBSCBS.Should().NotBeNull();
         gIBSCBS!.Element("CST")!.Value.Should().Be("200");
@@ -170,54 +170,54 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var ibscbsNf = doc.Root?.Element("nf")?.Element("IBSCBS");
         ibscbsNf.Should().NotBeNull();
-        
+
         // Check pRedutor
         ibscbsNf!.Element("pRedutor")!.Value.Should().Be("0,00");
-        
+
         // Check valores group structure per NTE-122/2025
         var valores = ibscbsNf.Element("valores");
         valores.Should().NotBeNull();
-        
+
         // vBC - calculation base
         valores!.Element("vBC")!.Value.Should().Be("1500,00");
-        
+
         // UF group - state IBS
         var uf = valores.Element("uf");
         uf.Should().NotBeNull();
         uf!.Element("pIBSUF")!.Value.Should().Be("2,50"); // 2.5%
         uf.Element("pAliqEfetUF").Should().NotBeNull(); // Effective rate
-        
+
         // MUN group - municipal IBS
         var mun = valores.Element("mun");
         mun.Should().NotBeNull();
         mun!.Element("pIBSMun")!.Value.Should().Be("2,50"); // 2.5%
         mun.Element("pAliqEfetMun").Should().NotBeNull();
-        
+
         // FED group - CBS
         var fed = valores.Element("fed");
         fed.Should().NotBeNull();
         fed!.Element("pCBS")!.Value.Should().Be("0,90"); // 0.9%
         fed.Element("pAliqEfetCBS").Should().NotBeNull();
-        
+
         // Check totCIBS group
         var totCIBS = ibscbsNf.Element("totCIBS");
         totCIBS.Should().NotBeNull();
         totCIBS!.Element("vTotNF")!.Value.Should().Be("1500,00");
-        
+
         // gTribRegular - regular taxation
         var gTribRegular = totCIBS.Element("gTribRegular");
         gTribRegular.Should().NotBeNull();
         gTribRegular!.Element("vTribRegIBSUF").Should().NotBeNull();
         gTribRegular.Element("vTribRegIBSMun").Should().NotBeNull();
         gTribRegular.Element("vTribRegCBS").Should().NotBeNull();
-        
+
         // gIBS - IBS totals
         var gIBS = totCIBS.Element("gIBS");
         gIBS.Should().NotBeNull();
         gIBS!.Element("vIBSTot").Should().NotBeNull();
         gIBS.Element("gIBSUFTot")?.Element("vIBSUF").Should().NotBeNull();
         gIBS.Element("gIBSMunTot")?.Element("vIBSMun").Should().NotBeNull();
-        
+
         // gCBS - CBS totals
         var gCBS = totCIBS.Element("gCBS");
         gCBS.Should().NotBeNull();
@@ -255,7 +255,7 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var prestador = doc.Root?.Element("prestador");
         prestador.Should().NotBeNull();
-        
+
         prestador!.Element("cpfcnpj")!.Value.Should().Be("12345678000195");
         prestador.Element("cidade")!.Value.Should().Be("8083"); // Concórdia TOM code
     }
@@ -274,7 +274,7 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var tomador = doc.Root?.Element("tomador");
         tomador.Should().NotBeNull();
-        
+
         tomador!.Element("tipo")!.Value.Should().Be("F"); // F = Física (CPF)
         tomador.Element("cpfcnpj")!.Value.Should().Be("12345678909");
     }
@@ -293,7 +293,7 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var tomador = doc.Root?.Element("tomador");
         tomador.Should().NotBeNull();
-        
+
         tomador!.Element("tipo")!.Value.Should().Be("J"); // J = Jurídica (CNPJ)
     }
 
@@ -311,7 +311,7 @@ public class IpmXmlBuilderTests
         var doc = XDocument.Parse(xml);
         var descritivo = doc.Root?.Element("itens")?.Element("lista")?.Element("descritivo");
         descritivo.Should().NotBeNull();
-        
+
         // XML should be parseable (special chars escaped)
         descritivo!.Value.Should().Contain("&lt;"); // < escaped
         descritivo.Value.Should().Contain("&gt;");  // > escaped
@@ -382,11 +382,11 @@ public class IpmXmlBuilderTests
             "999",
             "999999"
         );
-        
+
         _mockServiceTaxRepo
             .Setup(x => x.GetByServiceTypeKeyAsync(It.IsAny<string>(), default))
             .ReturnsAsync(customMapping);
-        
+
         SetupMockMunicipalities();
 
         // Act
@@ -406,11 +406,11 @@ public class IpmXmlBuilderTests
         _mockServiceTaxRepo
             .Setup(x => x.GetByServiceTypeKeyAsync(It.IsAny<string>(), default))
             .ReturnsAsync((ServiceTypeTaxMapping?)null);
-        
+
         _mockServiceTaxRepo
             .Setup(x => x.GetByCnaeCodeAsync(It.IsAny<string>(), default))
             .ReturnsAsync((ServiceTypeTaxMapping?)null);
-        
+
         SetupMockMunicipalities();
 
         // Act
@@ -424,7 +424,7 @@ public class IpmXmlBuilderTests
 
     // Helper methods
 
-    private Invoice CreateSampleInvoice()
+    private InvoiceXmlPayload CreateSampleInvoice()
     {
         var issuer = new IssuerDto
         {
@@ -464,20 +464,26 @@ public class IpmXmlBuilderTests
         var issuerJson = System.Text.Json.JsonSerializer.Serialize(issuer);
         var consumerJson = System.Text.Json.JsonSerializer.Serialize(consumer);
 
-        return Invoice.Create(
-            "client-123",
-            new Cnpj("12345678000195"),
-            issuerJson,
-            consumerJson,
-            "Serviço de lavagem completa do veículo",
-            1500.00m,
-            DateTime.UtcNow,
-            0.05m,
-            "vehicle-wash-45200-05"
-        );
+        return new InvoiceXmlPayload
+        {
+            ClientId = "client-123",
+            IssuerCnpj = "12345678000195",
+            IssuerData = issuerJson,
+            Series = 1,
+            Number = 1,
+            ConsumerData = consumerJson,
+            ServiceDescription = "Serviço de lavagem completa do veículo",
+            Amount = 1500.00m,
+            IssuedAt = DateTime.UtcNow,
+            IssRate = 0.05m,
+            ServiceTypeKey = "vehicle-wash-45200-05",
+            AliquotaPis = 0.0065m,
+            AliquotaCofins = 0.03m,
+            PisCofinsCts = "01"
+        };
     }
 
-    private Invoice CreateSampleInvoiceWithCpfConsumer()
+    private InvoiceXmlPayload CreateSampleInvoiceWithCpfConsumer()
     {
         var issuer = new IssuerDto
         {
@@ -513,19 +519,26 @@ public class IpmXmlBuilderTests
         var issuerJson = System.Text.Json.JsonSerializer.Serialize(issuer);
         var consumerJson = System.Text.Json.JsonSerializer.Serialize(consumer);
 
-        return Invoice.Create(
-            "client-456",
-            new Cnpj("12345678000195"),
-            issuerJson,
-            consumerJson,
-            "Serviço de polimento",
-            500.00m,
-            DateTime.UtcNow,
-            0.05m
-        );
+        return new InvoiceXmlPayload
+        {
+            ClientId = "client-456",
+            IssuerCnpj = "12345678000195",
+            IssuerData = issuerJson,
+            Series = 1,
+            Number = 1,
+            ConsumerData = consumerJson,
+            ServiceDescription = "Serviço de polimento",
+            Amount = 500.00m,
+            IssuedAt = DateTime.UtcNow,
+            IssRate = 0.05m,
+            ServiceTypeKey = "vehicle-wash-45200-05",
+            AliquotaPis = 0.0065m,
+            AliquotaCofins = 0.03m,
+            PisCofinsCts = "01"
+        };
     }
 
-    private Invoice CreateInvoiceWithSpecialCharacters()
+    private InvoiceXmlPayload CreateInvoiceWithSpecialCharacters()
     {
         var issuer = new IssuerDto
         {
@@ -561,16 +574,23 @@ public class IpmXmlBuilderTests
         var issuerJson = System.Text.Json.JsonSerializer.Serialize(issuer);
         var consumerJson = System.Text.Json.JsonSerializer.Serialize(consumer);
 
-        return Invoice.Create(
-            "client-789",
-            new Cnpj("12345678000195"),
-            issuerJson,
-            consumerJson,
-            "Serviço <premium> com 'aspas' & caracteres especiais / barras",
-            750.00m,
-            DateTime.UtcNow,
-            0.05m
-        );
+        return new InvoiceXmlPayload
+        {
+            ClientId = "client-789",
+            IssuerCnpj = "12345678000195",
+            IssuerData = issuerJson,
+            Series = 1,
+            Number = 1,
+            ConsumerData = consumerJson,
+            ServiceDescription = "Serviço <premium> com 'aspas' & caracteres especiais / barras",
+            Amount = 750.00m,
+            IssuedAt = DateTime.UtcNow,
+            IssRate = 0.05m,
+            ServiceTypeKey = "vehicle-wash-45200-05",
+            AliquotaPis = 0.0065m,
+            AliquotaCofins = 0.03m,
+            PisCofinsCts = "01"
+        };
     }
 
     private void SetupMockRepositories()

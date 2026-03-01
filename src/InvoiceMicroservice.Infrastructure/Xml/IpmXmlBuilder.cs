@@ -30,7 +30,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 
     public IApiClient GetApiClient() => _apiClient;
 
-    public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode, CancellationToken cancellationToken)
+    public async Task<string> BuildInvoiceXmlAsync(InvoiceXmlPayload invoice, bool isTestMode, CancellationToken cancellationToken)
     {
         var jsonOptions = new JsonSerializerOptions
         {
@@ -133,7 +133,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return ServiceTypeTaxCodes.Default();
     }
 
-    private async Task<XElement> BuildNfSectionAsync(Invoice invoice, CancellationToken cancellationToken)
+    private async Task<XElement> BuildNfSectionAsync(InvoiceXmlPayload invoice, CancellationToken cancellationToken)
     {
         var nf = new XElement("nf");
 
@@ -166,7 +166,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return nf;
     }
 
-    private XElement BuildPisCofinsSection(Invoice invoice)
+    private XElement BuildPisCofinsSection(InvoiceXmlPayload invoice)
     {
         var pisCofins = new XElement("pis_cofins");
 
@@ -371,7 +371,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return ibscbs;
     }
 
-    private async Task<XElement> BuildItemsAsync(Invoice invoice, IssuerDto issuer, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
+    private async Task<XElement> BuildItemsAsync(InvoiceXmlPayload invoice, IssuerDto issuer, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
     {
         var itens = new XElement("itens");
         var lista = new XElement("lista");

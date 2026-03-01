@@ -76,26 +76,27 @@ public class InvoiceEmissionWorker(
                             ? request.Data.PisCofinsCts.Value.ToString("D2")
                             : "00";
 
-                        var invoice = Invoice.Create(
-                            request.ClientId,
-                            issuerCnpj,
-                            issuerJson,
-                            request.Data.NfseSeries,
-                            request.Data.NfseNumber,
-                            consumerJson,
-                            request.Data.ServiceDescription,
-                            request.Data.Amount,
-                            request.Data.IssuedAt,
-                            request.Data.IssRate,
-                            request.Data.MunicipalTaxCode,
-                            ctsPisCofins,
-                            request.Data.ServiceTypeKey,
-                            request.Data.AliquotaPis,
-                            request.Data.AliquotaCofins,
-                            request.Data.TipoRetencaoPisCofins,
-                            request.Data.IbsCbsClassTrib,
-                            request.Data.IbsCbsCst
-                        );
+                        var invoice = new InvoiceXmlPayload
+                        {
+                            ClientId = request.ClientId,
+                            IssuerCnpj = issuerCnpj.Value,
+                            IssuerData = issuerJson,
+                            Series = request.Data.NfseSeries,
+                            Number = request.Data.NfseNumber,
+                            ConsumerData = consumerJson,
+                            ServiceDescription = request.Data.ServiceDescription,
+                            Amount = request.Data.Amount,
+                            IssuedAt = request.Data.IssuedAt,
+                            IssRate = request.Data.IssRate,
+                            MunicipalTaxCode = request.Data.MunicipalTaxCode,
+                            PisCofinsCts = ctsPisCofins,
+                            ServiceTypeKey = request.Data.ServiceTypeKey,
+                            AliquotaPis = request.Data.AliquotaPis,
+                            AliquotaCofins = request.Data.AliquotaCofins,
+                            TipoRetencaoPisCofins = request.Data.TipoRetencaoPisCofins,
+                            IbsCbsClassTrib = request.Data.IbsCbsClassTrib,
+                            IbsCbsCst = request.Data.IbsCbsCst
+                        };
 
                         var xmlBuilder = await xmlBuilderFactory.GetBuilderAsync(issuerCnpj.Value, stoppingToken);
                         var xml = await xmlBuilder.BuildInvoiceXmlAsync(invoice, request.IsTestMode, stoppingToken);

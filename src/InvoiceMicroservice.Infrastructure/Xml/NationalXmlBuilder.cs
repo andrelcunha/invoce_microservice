@@ -51,7 +51,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         PropertyNameCaseInsensitive = true
     };
 
-    public async Task<string> BuildInvoiceXmlAsync(Invoice invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
+    public async Task<string> BuildInvoiceXmlAsync(InvoiceXmlPayload invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
         var issuer = JsonSerializer.Deserialize<IssuerDto>(invoice.IssuerData, JsonOptions)
             ?? throw new InvalidOperationException("Invalid issuer payload in invoice.IssuerData.");
@@ -109,7 +109,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return builder.ToString();
     }
 
-    private async Task<XElement> BuildInfDpsAsync(Invoice invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
+    private async Task<XElement> BuildInfDpsAsync(InvoiceXmlPayload invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
         var codMun = issuer.Address.IbgeCode;
         var codMunToma = consumer.Address.IbgeCode;
@@ -261,7 +261,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return tom;
     }
 
-    private async Task<XElement> BuildServAsync(Invoice invoice, IssuerDto issuer, ServiceTypeTaxCodes codes, CancellationToken ct)
+    private async Task<XElement> BuildServAsync(InvoiceXmlPayload invoice, IssuerDto issuer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
         var servico = El("serv");
 
@@ -289,7 +289,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return servico;
     }
 
-    private XElement BuildValoresAsync(Invoice invoice)
+    private XElement BuildValoresAsync(InvoiceXmlPayload invoice)
     {
         // grupo valores
         var valores = El("valores");
@@ -348,7 +348,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return valores;
     }
 
-    private async Task<XElement> BuildIbsCbsAsync(Invoice invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
+    private async Task<XElement> BuildIbsCbsAsync(InvoiceXmlPayload invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
     {
         var ibscbs = El("IBSCBS");
 
@@ -417,7 +417,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return dest;
     }
 
-    private async Task<XElement> BuildValoresIbsCbsAsync(Invoice invoice, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
+    private async Task<XElement> BuildValoresIbsCbsAsync(InvoiceXmlPayload invoice, ServiceTypeTaxCodes codes, CancellationToken cancellationToken)
     {
         var valores = El("valores");
 
