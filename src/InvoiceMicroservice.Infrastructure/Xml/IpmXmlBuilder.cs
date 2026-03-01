@@ -100,7 +100,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         root.Add(await BuildItemsAsync(invoice, issuer, serviceCodes, cancellationToken));
 
         // <IBSCBS> - Top-level tax reform section (REQUIRED for compliance)
-        root.Add(BuildIbsCbsSection(serviceCodes));
+        root.Add(BuildIbsCbsSection(invoice, serviceCodes));
 
         // <forma_pagamento> - payment method (optional but recommended)
         root.Add(new XElement("forma_pagamento",
@@ -171,10 +171,10 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         var pisCofins = new XElement("pis_cofins");
 
         // CST code - should be configurable per issuer
-        pisCofins.Add(new XElement("cst", "01"));
+        pisCofins.Add(new XElement("cst", invoice.PisCofinsCts ?? "01"));
 
         // Retention type: 1=Retained, 2=Not Retained, 3=PIS Retained/COFINS Not, 4=PIS Not/COFINS Retained
-        pisCofins.Add(new XElement("tipo_retencao", "2")); // Default: not retained
+        pisCofins.Add(new XElement("tipo_retencao", invoice.TipoRetencaoPisCofins ?? "2")); // Default: not retained
 
         pisCofins.Add(new XElement("base_calculo", Helpers.FormatMonetary(invoice.Amount)));
 
@@ -339,7 +339,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return section;
     }
 
-    private XElement BuildIbsCbsSection(ServiceTypeTaxCodes codes)
+    private XElement BuildIbsCbsSection(InvoiceXmlPayload invoice, ServiceTypeTaxCodes codes)
     {
         // Top-level IBSCBS section - REQUIRED for tax reform compliance
         // This section is OUTSIDE <nf> and contains operational tax data
@@ -359,10 +359,11 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         var gIBSCBS = new XElement("gIBSCBS");
 
         // CST: Tax Situation Code (3 digits)
-        gIBSCBS.Add(new XElement("CST", codes.TaxSituationCode));
+        // gIBSCBS.Add(new XElement("CST", codes.TaxSituationCode));
+        gIBSCBS.Add(new XElement("CST", invoice.IbsCbsCst ?? "000"));
 
         // cClassTrib: Tax Classification Code (6 digits)
-        gIBSCBS.Add(new XElement("cClassTrib", "000001")); // Hardcoded for now, can be made dynamic later
+        gIBSCBS.Add(new XElement("cClassTrib", invoice.IbsCbsClassTrib ?? "000000")); // Hardcoded for now, can be made dynamic later
 
         trib.Add(gIBSCBS);
         valores.Add(trib);
