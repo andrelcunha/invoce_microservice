@@ -28,7 +28,7 @@ public class InvoicesController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a new invoice for emission
+    /// Enqueues an invoice emission job.
     /// </summary>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
@@ -51,15 +51,14 @@ public class InvoicesController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(errors));
         }
 
-        // Delegate to the handler - it handles persistence, XML generation, and IPM submission
-        var invoiceId = await _handler.HandleAsync(command, ct);
+        var jobId = await _handler.HandleAsync(command, ct);
 
-        var location = $"/api/invoices/{invoiceId}";
-        return Accepted(location, new { Id = invoiceId, Status = "Pending" });
+        var location = $"/api/invoices/{jobId}";
+        return Accepted(location, new { JobId = jobId, JobStatus = "Pending" });
     }
 
     /// <summary>
-    /// Gets the status and details of an invoice by ID
+    /// Gets job/result status and provider details by job ID.
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
