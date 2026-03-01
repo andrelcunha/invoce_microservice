@@ -14,7 +14,6 @@ public static class DependencyInjection
     public static IServiceCollection AddDependencies(this IServiceCollection services)
     {
         // Repositories
-        services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IServiceTypeTaxMappingRepository, ServiceTypeTaxMappingRepository>();
         services.AddScoped<IIssuerRepository, IssuerRepository>();
         services.AddScoped<IPortalCredentialsRepository, PortalCredentialsRepository>();
