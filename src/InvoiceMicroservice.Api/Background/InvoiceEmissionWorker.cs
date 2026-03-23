@@ -72,9 +72,9 @@ public class InvoiceEmissionWorker(
                         var issuerJson = JsonSerializer.Serialize(issuerDto, jsonOptions);
                         var consumerJson = JsonSerializer.Serialize(request.Data.Consumer, jsonOptions);
 
-                        var ctsPisCofins = request.Data.PisCofinsCts.HasValue
-                            ? request.Data.PisCofinsCts.Value.ToString("D2")
-                            : "00";
+                        var ctsPisCofins = request.Data.PisCofinsCts.HasValue && request.Data.PisCofinsCts.Value > 0
+                            ? request.Data.PisCofinsCts.Value.ToString()
+                            : null;
 
                         var invoice = new InvoiceXmlPayload
                         {

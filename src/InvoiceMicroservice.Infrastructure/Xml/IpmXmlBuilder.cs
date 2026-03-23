@@ -169,9 +169,10 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
     private XElement BuildPisCofinsSection(InvoiceXmlPayload invoice)
     {
         var pisCofins = new XElement("pis_cofins");
+        var pisCofinsCst = NormalizePisCofinsCst(invoice.PisCofinsCts);
 
         // CST code - should be configurable per issuer
-        pisCofins.Add(new XElement("cst", invoice.PisCofinsCts ?? "01"));
+        pisCofins.Add(new XElement("cst", pisCofinsCst ?? "1"));
 
         // Retention type: 1=Retained, 2=Not Retained, 3=PIS Retained/COFINS Not, 4=PIS Not/COFINS Retained
         pisCofins.Add(new XElement("tipo_retencao", invoice.TipoRetencaoPisCofins ?? "2")); // Default: not retained
@@ -183,6 +184,17 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         pisCofins.Add(new XElement("aliquota_cofins", Helpers.FormatRate(invoice.AliquotaCofins)));
 
         return pisCofins;
+    }
+
+    private static string? NormalizePisCofinsCst(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (!int.TryParse(value, out var parsed) || parsed <= 0)
+            return null;
+
+        return parsed.ToString(CultureInfo.InvariantCulture);
     }
 
     private async Task<XElement> BuildIbsCbsNfSectionAsync(decimal amount, CancellationToken cancellationToken)

@@ -293,6 +293,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     {
         // grupo valores
         var valores = El("valores");
+        var pisCofinsCst = NormalizePisCofinsCst(invoice.PisCofinsCts);
         var vServPrest = El("vServPrest");
         var temIntermediario = false; // Hardcoded for MVP
         if (temIntermediario)
@@ -321,8 +322,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var tribFed = El("tribFed");
         var pisCofins = El("piscofins");
         // Código de Situação Tributária do PIS/COFINS
-        pisCofins.Add(El("CST", invoice.PisCofinsCts ?? "01"));
-        if (invoice.PisCofinsCts != "00")
+        pisCofins.Add(El("CST", pisCofinsCst ?? "1"));
+        if (pisCofinsCst is not null)
             pisCofins.Add(El("vBCPisCofins", FormatMonetary(invoice.Amount))); // Base de Cálculo
         pisCofins.Add(El("pAliqPis", FormatRate(invoice.AliquotaPis)));
         pisCofins.Add(El("pAliqCofins", FormatRate(invoice.AliquotaCofins)));
@@ -346,6 +347,17 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         trib.Add(totTrib);
         valores.Add(trib);
         return valores;
+    }
+
+    private static string? NormalizePisCofinsCst(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (!int.TryParse(value, out var parsed) || parsed <= 0)
+            return null;
+
+        return parsed.ToString(CultureInfo.InvariantCulture);
     }
 
     private async Task<XElement> BuildIbsCbsAsync(InvoiceXmlPayload invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)

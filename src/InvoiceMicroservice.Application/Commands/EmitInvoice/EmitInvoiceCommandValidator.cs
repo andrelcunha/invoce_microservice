@@ -49,10 +49,28 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 
             RuleFor(x => x.ServiceTypeKey).MaximumLength(100).When(x => x.ServiceTypeKey != null);
 
+            RuleFor(x => x.PisCofinsCts)
+                .Must(BeValidPisCofinsCst)
+                .When(x => x.PisCofinsCts.HasValue)
+                .WithMessage("PisCofinsCts must be one of: 1-9, 49-56, 60-67, 70-75, 98, 99.");
+
             // ISS rate validation: Brazilian municipalities can charge 2% to 5%
             RuleFor(x => x.IssRate)
                 .InclusiveBetween(0.02m, 0.05m)
                 .WithMessage("ISS rate must be between 2% (0.02) and 5% (0.05)");
+        }
+
+        private static bool BeValidPisCofinsCst(int? value)
+        {
+            if (!value.HasValue)
+                return true;
+
+            return value.Value is >= 1 and <= 9
+                or >= 49 and <= 56
+                or >= 60 and <= 67
+                or >= 70 and <= 75
+                or 98
+                or 99;
         }
     }
 
