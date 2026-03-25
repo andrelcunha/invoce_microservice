@@ -9,9 +9,29 @@ PassouLavou should call this API whenever it needs to emit an NFS-e for a servic
 The issuer already exists in our database, so PassouLavou does not need to create or manage issuer data here. It only needs to:
 
 1. build the JSON payload correctly;
-2. call `POST /api/invoices`;
+2. call `POST /api/invoices` with the configured API key;
 3. store the returned `jobId`;
 4. poll `GET /api/invoices/{jobId}` until processing finishes.
+
+## Authentication
+
+This API is protected by an API key and expects the caller to send the shared key in the `X-Api-Key` header on every request.
+
+- Header name: `X-Api-Key`
+- Applies to: `POST /api/invoices` and `GET /api/invoices/{jobId}`
+- Caller: PassouLavouAPI
+
+Example:
+
+```http
+X-Api-Key: <shared-api-key>
+```
+
+Important:
+
+- requests without a valid API key will be rejected with `401 Unauthorized`;
+- the API key is an application credential, not an end-user credential;
+- PassouLavou should load this key from secure configuration such as environment variables or a secrets manager, never hardcode it in source code.
 
 ## Endpoint Summary
 
@@ -20,6 +40,7 @@ The issuer already exists in our database, so PassouLavou does not need to creat
 - Method: `POST`
 - Path: `/api/invoices`
 - Content-Type: `application/json`
+- Required header: `X-Api-Key: <shared-api-key>`
 - Behavior: validates the payload and enqueues an asynchronous invoice emission job
 
 Important: this endpoint does **not** mean the invoice was issued immediately. A successful `POST` only means the request was accepted and put in the queue.
@@ -28,6 +49,7 @@ Important: this endpoint does **not** mean the invoice was issued immediately. A
 
 - Method: `GET`
 - Path: `/api/invoices/{jobId}`
+- Required header: `X-Api-Key: <shared-api-key>`
 - Behavior: returns the queue/job status and, when available, the provider result
 
 ## Request Contract
@@ -179,9 +201,9 @@ Example:
 PassouLavou should implement the following flow:
 
 1. Validate its own payload before calling this API.
-2. Send `POST /api/invoices`.
+2. Send `POST /api/invoices` with `X-Api-Key`.
 3. If response is `202`, store `jobId` in its database.
-4. Poll `GET /api/invoices/{jobId}` every few seconds.
+4. Poll `GET /api/invoices/{jobId}` every few seconds, always including `X-Api-Key`.
 5. Stop polling when `jobStatus` reaches a terminal state.
 6. Persist returned provider fields such as `numeroDfe`, `protocolo`, `verificationCode`, `chaveAcesso`, and any error message.
 
@@ -269,6 +291,7 @@ Recommended mapping from PassouLavou domain to this API:
 ## Suggested Error-Handling Rules in PassouLavou
 
 - On `400`: treat as payload error, show actionable message, do not retry automatically.
+- On `401`: treat as authentication/configuration error, alert/log, and do not retry until the API key is corrected.
 - On `404` during polling: treat as unknown job id and alert/log.
 - On `202`: do not mark the invoice as issued yet.
 - On job failure: show/store `lastError` and `result.errorMessage`.
@@ -277,14 +300,15 @@ Recommended mapping from PassouLavou domain to this API:
 ## Suggested Implementation Checklist For The PassouLavou Agent
 
 1. Add an HTTP client for this service with configurable base URL and timeout.
-2. Create DTOs for `CreateInvoice` request and for `GetInvoiceStatus` response.
-3. Add local validation before sending requests.
-4. Add a service method to enqueue invoice emission.
-5. Persist returned `jobId`.
-6. Add polling/reconciliation logic for invoice jobs.
-7. Prevent duplicate POSTs for the same business event.
-8. Store the final provider identifiers returned by the status endpoint.
-9. Keep `isTestMode=true` in homologation and only switch to `false` in production.
+2. Configure the shared API key securely and send it in the `X-Api-Key` header for every request.
+3. Create DTOs for `CreateInvoice` request and for `GetInvoiceStatus` response.
+4. Add local validation before sending requests.
+5. Add a service method to enqueue invoice emission.
+6. Persist returned `jobId`.
+7. Add polling/reconciliation logic for invoice jobs.
+8. Prevent duplicate POSTs for the same business event.
+9. Store the final provider identifiers returned by the status endpoint.
+10. Keep `isTestMode=true` in homologation and only switch to `false` in production.
 
 ## Source References In This Repository
 
@@ -297,8 +321,9 @@ Recommended mapping from PassouLavou domain to this API:
 ## Important Code-Based Notes
 
 - The API route is defined in `InvoicesController` with `[Route("api/[controller]")]`, so the concrete route is `/api/invoices`.
+- The API is protected by API key authentication and expects `X-Api-Key` on invoice endpoints.
 - `POST /api/invoices` validates first and returns `202 Accepted` with `jobId` and `jobStatus = "Pending"` when accepted.
 - The actual emission is done asynchronously by `InvoiceEmissionWorker`.
 - The worker enriches the request with issuer data from our database, builds provider-specific XML, and submits it to the configured provider.
 - Provider selection depends on the issuer's configured portal credentials and address.
-- At the application level, authorization is enabled in startup, but there is currently no authentication middleware or controller-level authorization on this endpoint. Network-level protection and deployment-specific access rules should still be respected.
+- Authentication is configured globally in startup, so requests without a valid API key will be rejected before reaching the controller.
