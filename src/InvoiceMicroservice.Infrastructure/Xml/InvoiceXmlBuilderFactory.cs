@@ -46,7 +46,7 @@ public class InvoiceXmlBuilderFactory : IInvoiceXmlBuilderFactory
         var credentials = issuer?.PortalCredentials;
         if (!string.IsNullOrWhiteSpace(issuer?.AddressJson))
         {
-            Address address = string.IsNullOrWhiteSpace(issuer.AddressJson)
+            Address? address = string.IsNullOrWhiteSpace(issuer.AddressJson)
                 ? null
                 : JsonSerializer.Deserialize<Address>(issuer.AddressJson, JsonOptions);
 
