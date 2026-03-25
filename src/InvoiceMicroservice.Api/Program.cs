@@ -16,8 +16,8 @@ public class Program
         builder.Services.AddEFConfiguration(builder.Configuration);
         builder.Services.AddTaxConfiguration(builder.Configuration);
         builder.Services.AddApiClientConfiguration(builder.Configuration);
+        builder.Services.AddAuthenticationConfiguration(builder.Configuration);
         builder.Services.AddDependencies();
-        builder.Services.AddAuthorization();
         builder.Services.AddControllers();
         builder.Services.AddOpenApiConfiguration();
         builder.Services.AddFluentValidationConfiguration();
@@ -27,6 +27,7 @@ public class Program
         // Configure the HTTP request pipeline.
         app.UseOpenApiConfiguration();
         app.UseHttpsRedirection();
+        app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
 
