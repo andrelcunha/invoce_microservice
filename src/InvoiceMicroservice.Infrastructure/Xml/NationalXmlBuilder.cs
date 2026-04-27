@@ -315,7 +315,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         tribMun.Add(El("tribISSQN", tribISSQN)); // 1 = Tributável, 2 = Imunidade, 3 - Exportação, 4 - Não Incidência
         var tpRetISSQN = 1; // 1 = Não Retido (default)
         tribMun.Add(El("tpRetISSQN", tpRetISSQN)); // 1 = Não Retido, 2 = Retido pelo tomador 3 = Retido pelo intermediário
-        if (tribISSQN != 1) // pAliq deve ser omitido se o prestador não for Simples Nacional ou se o convenio municipal estiver em vigor
+        if (tribISSQN == 1) // pAliq apenas para operações tributáveis; omitido em imunidade/exportação/não-incidência
             tribMun.Add(El("pAliq", FormatRate(invoice.IssRate)));
         trib.Add(tribMun);
 
