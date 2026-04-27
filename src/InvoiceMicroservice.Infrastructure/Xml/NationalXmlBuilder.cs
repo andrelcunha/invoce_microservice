@@ -357,7 +357,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         if (!int.TryParse(value, out var parsed) || parsed <= 0)
             return null;
 
-        return parsed.ToString(CultureInfo.InvariantCulture);
+        return parsed.ToString("D2", CultureInfo.InvariantCulture); // spec requires 2-char zero-padded ("01"-"09")
     }
 
     private async Task<XElement> BuildIbsCbsAsync(InvoiceXmlPayload invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
