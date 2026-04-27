@@ -33,6 +33,8 @@ Important:
 - the API key is an application credential, not an end-user credential;
 - PassouLavou should load this key from secure configuration such as environment variables or a secrets manager, never hardcode it in source code.
 
+> **⚠️ Planned change (INV-1):** The current shared key will be replaced by per-client API keys stored in an `api_clients` table. Each client will receive its own key that can be revoked independently. The header name (`X-Api-Key`) and usage pattern will remain the same, but the key value will be client-specific. Update the configured key after INV-1 is deployed.
+
 ## Endpoint Summary
 
 ### 1. Create invoice emission job
@@ -58,7 +60,7 @@ The request body maps to `EmitInvoiceCommand`.
 
 ```json
 {
-  "clientId": "lavacarro_api",
+  "clientId": "passoulavou",
   "issuerCnpj": "64224814000192",
   "data": {
     "nfseSeries": 1,
@@ -89,7 +91,7 @@ The request body maps to `EmitInvoiceCommand`.
     "pisCofinsCts": 1,
     "aliquotaPis": 0.00,
     "aliquotaCofins": 0.0,
-    "tipoRetencaoPisCofins": "0",
+    "tipoRetencaoPisCofins": "2",
     "ibsCbsClassTrib": "000001",
     "ibsCbsCst": "000"
   },
@@ -101,7 +103,7 @@ The request body maps to `EmitInvoiceCommand`.
 
 ### Top-level fields
 
-- `clientId`: required. Identifies the calling system. For PassouLavou, use a stable identifier such as `passoulavou` or `lavacarro_api`.
+- `clientId`: required. Identifies the calling system. For PassouLavou, use `passoulavou`.
 - `issuerCnpj`: required. Must be a valid CNPJ and must already exist as an active issuer in this system.
 - `data`: required. Contains invoice data.
 - `isTestMode`: optional in practice, but strongly recommended to send explicitly. `true` means homologation/test flow. `false` means production.
@@ -120,7 +122,7 @@ The request body maps to `EmitInvoiceCommand`.
 - `pisCofinsCts`: optional integer, but if sent it must be one of: `1-9`, `49-56`, `60-67`, `70-75`, `98`, `99`.
 - `aliquotaPis`: decimal.
 - `aliquotaCofins`: decimal.
-- `tipoRetencaoPisCofins`: string.
+- `tipoRetencaoPisCofins`: string. Maps to `<tpRetPisCofins>` in the Nacional NFS-e XML. Accepted values: `"1"` (PIS/COFINS Retido), `"2"` (PIS/COFINS Não Retido), `"3"` (PIS Retido / COFINS Não Retido), `"4"` (PIS Não Retido / COFINS Retido). For B2C PassouLavou, use `"2"`. Note: IPM portal ignores this field — its own `<tipo_retencao>` tag was discontinued; retention on IPM is inferred from the presence of `<valor_pis>`/`<valor_cofins>` in the XML.
 - `ibsCbsClassTrib`: string.
 - `ibsCbsCst`: string.
 
@@ -214,6 +216,8 @@ Recommended polling:
 - timeout after a business-defined window, for example 2 to 5 minutes;
 - if timing out, keep the job as pending for later reconciliation.
 
+> **⚠️ Planned change (INV-2 + NJS-1):** Polling will be demoted to a safety net once webhook delivery is implemented. After those items are shipped, the microservice will push results to PassouLavou via `POST /invoices/webhook` (HMAC-SHA256 signed). The polling cron will only pick up jobs that have not received a push within a minimum age threshold (e.g. 15 minutes). Until then, polling is the primary delivery path.
+
 ## How to Interpret Job Status
 
 Treat these statuses conceptually:
@@ -286,7 +290,7 @@ Recommended mapping from PassouLavou domain to this API:
 - `data.issuedAt`: service completion timestamp or emission timestamp, as agreed by business rules
 - `data.serviceTypeKey`: fixed mapping agreed with our tax setup, for example `vehicle-wash-45200-05`
 - `data.issRate`: issuer/service ISS rate
-- `data.pisCofinsCts`, `data.aliquotaPis`, `data.aliquotaCofins`, `data.tipoRetencaoPisCofins`, `data.ibsCbsClassTrib`, `data.ibsCbsCst`: tax fields agreed with fiscal rules for that issuer
+- `data.pisCofinsCts`, `data.aliquotaPis`, `data.aliquotaCofins`, `data.tipoRetencaoPisCofins`, `data.ibsCbsClassTrib`, `data.ibsCbsCst`: tax fields agreed with fiscal rules for that issuer; for B2C PassouLavou use `tipoRetencaoPisCofins: "2"` (Não Retido)
 
 ## Suggested Error-Handling Rules in PassouLavou
 
