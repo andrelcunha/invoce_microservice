@@ -11,7 +11,12 @@ public static class AuthenticationConfig
             .AddOptions<ApiKeyAuthenticationOptions>()
             .Bind(configuration.GetSection(ApiKeyAuthenticationOptions.SectionName))
             .Validate(options => !string.IsNullOrWhiteSpace(options.HeaderName), "API key header name must be configured.")
-            .Validate(options => !string.IsNullOrWhiteSpace(options.Key), "API key must be configured.")
+            .ValidateOnStart();
+
+        services
+            .AddOptions<AdminKeyOptions>()
+            .Bind(configuration.GetSection(AdminKeyOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.Key), "Admin key must be configured.")
             .ValidateOnStart();
 
         services

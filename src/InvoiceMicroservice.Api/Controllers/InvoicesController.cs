@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using FluentValidation;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Interfaces;
@@ -37,6 +38,10 @@ public class InvoicesController : ControllerBase
         [FromBody] EmitInvoiceCommand command,
         CancellationToken ct)
     {
+        var authenticatedClientId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.Equals(command.ClientId, authenticatedClientId, StringComparison.Ordinal))
+            return Forbid();
+
         var validationResult = await _validator.ValidateAsync(command, ct);
         if (!validationResult.IsValid)
         {

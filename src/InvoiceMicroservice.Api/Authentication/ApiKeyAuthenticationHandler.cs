@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
+using InvoiceMicroservice.Domain.Interfaces;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
@@ -9,48 +10,47 @@ namespace InvoiceMicroservice.Api.Authentication;
 
 public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthenticationOptions>
 {
+    private readonly IApiClientRepository _clients;
+
     public ApiKeyAuthenticationHandler(
         IOptionsMonitor<ApiKeyAuthenticationOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder)
+        UrlEncoder encoder,
+        IApiClientRepository clients)
         : base(options, logger, encoder)
     {
+        _clients = clients;
     }
 
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(Options.HeaderName, out var headerValues))
-        {
-            return Task.FromResult(AuthenticateResult.NoResult());
-        }
+            return AuthenticateResult.NoResult();
 
         if (headerValues.Count != 1)
-        {
-            return Task.FromResult(AuthenticateResult.Fail("A single API key value is required."));
-        }
-
-        if (string.IsNullOrWhiteSpace(Options.Key))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("API key authentication is not configured."));
-        }
+            return AuthenticateResult.Fail("A single API key value is required.");
 
         var providedKey = headerValues[0];
-        if (string.IsNullOrWhiteSpace(providedKey) || !KeysMatch(providedKey, Options.Key))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("Invalid API key."));
-        }
+        if (string.IsNullOrWhiteSpace(providedKey))
+            return AuthenticateResult.Fail("Invalid API key.");
+
+        var hash = ComputeHash(providedKey);
+        var client = await _clients.GetByApiKeyHashAsync(hash);
+
+        if (client is null)
+            return AuthenticateResult.Fail("Invalid API key.");
 
         var claims = new[]
         {
-            new Claim(ClaimTypes.Name, "PassouLavouAPI"),
-            new Claim(ClaimTypes.NameIdentifier, "passou-lavou-api")
+            new Claim(ClaimTypes.Name, client.ClientId),
+            new Claim(ClaimTypes.NameIdentifier, client.ClientId)
         };
 
         var identity = new ClaimsIdentity(claims, ApiKeyAuthenticationOptions.SchemeName);
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, ApiKeyAuthenticationOptions.SchemeName);
 
-        return Task.FromResult(AuthenticateResult.Success(ticket));
+        return AuthenticateResult.Success(ticket);
     }
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
@@ -60,12 +60,9 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         return Task.CompletedTask;
     }
 
-    private static bool KeysMatch(string providedKey, string configuredKey)
+    internal static string ComputeHash(string apiKey)
     {
-        var providedBytes = Encoding.UTF8.GetBytes(providedKey);
-        var configuredBytes = Encoding.UTF8.GetBytes(configuredKey);
-
-        return providedBytes.Length == configuredBytes.Length &&
-               CryptographicOperations.FixedTimeEquals(providedBytes, configuredBytes);
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 }

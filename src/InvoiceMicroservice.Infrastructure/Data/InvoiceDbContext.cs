@@ -13,6 +13,7 @@ public class InvoiceDbContext : DbContext
     public DbSet<PortalCredentialsEntity> PortalCredentials => Set<PortalCredentialsEntity>();
     public DbSet<InvoiceEmissionJob> InvoiceEmissionJobs => Set<InvoiceEmissionJob>();
     public DbSet<InvoiceEmissionResult> InvoiceEmissionResults => Set<InvoiceEmissionResult>();
+    public DbSet<ApiClient> ApiClients => Set<ApiClient>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -267,6 +268,45 @@ public class InvoiceDbContext : DbContext
 
             b.HasIndex(x => new { x.Status, x.NextRetryAt, x.CreatedAt });
             b.HasIndex(x => x.IssuerCnpj);
+        });
+
+        modelBuilder.Entity<ApiClient>(b =>
+        {
+            b.ToTable("api_clients");
+            b.HasKey(x => x.Id);
+
+            b.Property(x => x.Id)
+                .HasColumnName("id")
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            b.Property(x => x.ClientId)
+                .HasColumnName("client_id")
+                .HasMaxLength(100)
+                .IsRequired();
+
+            b.Property(x => x.ApiKeyHash)
+                .HasColumnName("api_key_hash")
+                .HasMaxLength(64)
+                .IsRequired();
+
+            b.Property(x => x.WebhookUrl)
+                .HasColumnName("webhook_url")
+                .HasMaxLength(2048);
+
+            b.Property(x => x.WebhookSecret)
+                .HasColumnName("webhook_secret")
+                .HasMaxLength(256);
+
+            b.Property(x => x.IsActive)
+                .HasColumnName("is_active")
+                .HasDefaultValue(true);
+
+            b.Property(x => x.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("now() at time zone 'utc'");
+
+            b.HasIndex(x => x.ClientId).IsUnique();
+            b.HasIndex(x => x.ApiKeyHash).IsUnique();
         });
 
         modelBuilder.Entity<InvoiceEmissionResult>(b =>
