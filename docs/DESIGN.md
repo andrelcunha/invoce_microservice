@@ -87,6 +87,12 @@ Issuer address is stored as JSONB in `IssuerEntity.AddressJson` and deserialized
 
 Note: the factory calls `issuerRepository.GetByCnpjAsync` internally, so the worker performs two issuer DB lookups per job (worker + factory). The factory also requires the `PortalCredentials` navigation property to be eager-loaded by the issuer repository.
 
+### `municipal_inscription` — optional field
+
+`issuers.municipal_inscription` is nullable. Neither `IpmXmlBuilder` nor `NationalXmlBuilder` currently sends the inscrição municipal in the emitted XML (the Nacional builder has it commented out as `<IM>`; the IPM builder does not reference it at all). The field is kept because future portals — particularly Betha Fly e-Nota, which some municipalities use — may require it, and new branches are being onboarded whose portal type is not yet confirmed.
+
+Consequence: omit `municipalInscription` from `POST /api/issuers` when the value is unknown; the field is optional at the API, validator, and DB layers. Supply it later via the update endpoint once the portal type and municipal registration number are confirmed.
+
 ### Tax rate ownership
 
 Tax rates are the caller's responsibility — the microservice does not know the correct rates for a given issuer because they depend on the issuer's city, CNAE, regime tributário, and whether retention follows the prestador's or tomador's municipality. The caller (e.g. `passoulavou-api`) computes and sends these values per request:
@@ -206,3 +212,4 @@ dotnet ef migrations add <MigrationName> --project src/InvoiceMicroservice.Infra
 - **`api_clients` migration pending** — `AddApiClientsTable` migration was generated but `dotnet ef database update` has not been run yet against the target database.
 - **`IssuerValidator` dead code** — `EmitInvoiceCommandValidator` defines an inner `IssuerValidator` class but never applies it; the CNPJ existence check is wired directly in the parent validator. The inner class is inert.
 - **Silent service type fallback** — `InvoiceXmlBuilderFactory.GetServiceCodesAsync` falls back to `ServiceTypeTaxCodes.Default()` when no mapping is found for `serviceTypeKey`. No warning or error is logged; the invoice is emitted with default codes silently.
+- **PFX upload via `POST /api/portalcredentials` corrupts cert when source is DB export** — if you export a certificate from the DB using `encode(certificate_data, 'base64')` and re-upload the decoded file via the multipart endpoint, the result is 114 bytes larger than the original due to PostgreSQL line-wrapping the base64 at 76 chars. The corrupted cert causes `ASN1 corrupted data` at sign time. Workaround: copy cert bytes between issuers with a direct SQL `UPDATE ... SET certificate_data = (SELECT certificate_data FROM ...)` instead of going through the file endpoint.

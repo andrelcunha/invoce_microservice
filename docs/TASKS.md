@@ -13,6 +13,11 @@ Backlog and completed work for the `invoce_microservice` repo. The `passoulavou-
 - [x] **[IPM-2]** `NormalizePisCofinsCst` now uses `.ToString("D2")` — CST is correctly zero-padded to 2 digits (e.g. `"01"` not `"1"`)
 - [x] **[IPM-R1]** IPM response encoding — switched from `ReadAsStringAsync()` to `XDocument.Load(stream)` so ISO-8859-1 responses are decoded correctly (Portuguese chars were appearing as `�`)
 - [x] **[IPM-R2]** IPM response parser — fixed `<mensagem>` text path (was `root.Element("mensagem").Value`, actual text is in `<mensagem><codigo>`); fixed success detection (no `<sucesso>` element in real responses — now uses `<situacao_codigo_nfse>=="1"` with `<sucesso>` as fallback)
+- [x] **[INV-3]** `dhEmi` timezone — fixed: `DateTime.Now` → `TimeZoneInfo.ConvertTime(DateTime.UtcNow, "America/Sao_Paulo")` so `dhEmi` is always in BRT; SEFIN Nacional rejects DPS with `+00:00` offset as "future" (E0008)
+- [x] **[NAC-3]** `pAliq` gated on `opSimpNac` — non-Simples Nacional issuers (`opSimpNac=1`) must NOT send `pAliq` when municipality is active on the Nacional system (E0617); Simples Nacional issuers still need to send it
+- [x] **[NAC-4]** `indDest` fixed to `0` (tomador = destinatário) for B2C — `indDest=1` forced a `<dest>` element with RFB CPF/municipality cross-check that rejected fake test CPFs (E0922)
+- [x] **[NAC-5]** `cTribMun` removed from `BuildServAsync` — was hardcoded to `"001"` which is valid for Porto Alegre but not for other municipalities (E0314); each city maintains its own code list so there is no safe default; field is omitted until per-issuer configuration is available
+- [x] **[INV-7]** `municipal_inscription` made optional — column is now nullable (`MakeIssuerMunicipalInscriptionNullable` migration); `NotEmpty()` removed from `EmitInvoiceCommandValidator`; `required` removed from `RegisterIssuerCommand`. Neither builder currently sends the field in emitted XML; kept for future portal types (e.g. Betha) that may require it
 
 ---
 
@@ -30,14 +35,6 @@ Depends on: INV-1 ✅
 - After job settles (succeeded or failed), worker looks up `webhook_url` + `webhook_secret` from `api_clients` by `clientId`
 - `POST {webhookUrl}` with HMAC-SHA256 signature in `X-Webhook-Signature` header
 - Retry with exponential backoff (3–5 attempts) on delivery failure
-
----
-
-### [INV-3] `dhEmi` timezone dependency — Priority: Low
-
-`DateTime.Now` used for emission datetime in `NationalXmlBuilder`. Safe while server is BRT, fragile if containerized in a different timezone.
-
-**Fix:** `TimeZoneInfo.ConvertTime(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"))`
 
 ---
 

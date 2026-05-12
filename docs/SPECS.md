@@ -294,7 +294,11 @@ Key field rules validated against spec:
 | Field | Rule |
 |---|---|
 | `dCompet` | `YYYY-MM-DD` (full date, not month-only) |
-| `pAliq` | Emitter-provided only when municipality is NOT on the national system AND `tribISSQN = 1` (taxable) |
+| `dhEmi` | Must be in BRT (`America/Sao_Paulo`). SEFIN treats the offset-naive part as local time — a `+00:00` offset appears 3 h in the future and triggers E0008 |
+| `dCompet` | `YYYY-MM-DD` (full date, not month-only) |
+| `pAliq` | Non-Simples Nacional issuers (`opSimpNac=1`) with an active-Nacional municipality **must NOT** send `pAliq` — SEFIN infers the rate from its own table (E0617). Simples Nacional issuers still supply it |
+| `cTribMun` | Municipality-specific service classification code. **Not emitted** — each city publishes its own list and there is no safe default; omitting it is accepted by SEFIN. Supplying a wrong value causes E0314. Add per-issuer configuration when the municipal code is known |
+| `indDest` | `0` for B2C (tomador = destinatário). `1` triggers a separate `<dest>` element with RFB CPF/CNPJ municipality cross-check; fake test CPFs fail this check (E0922) |
 | `tpRetISSQN` | `"1"` (Não Retido) — correct for B2C |
 | `tpRetPisCofins` | `"2"` (Não Retido) — correct for B2C |
 | PIS/COFINS CST (`cst`) | 2-char zero-padded: `"01"`–`"09"` |
@@ -303,7 +307,49 @@ Key field rules validated against spec:
 | IBSCBS group | Optional until 2027 for Simples Nacional |
 | `indFinal` | Deprecated in 2026 per NT 005 |
 
-### 4.1 Fiscal Code Validation Responsibility
+### 4.2 Transport and Response Format
+
+- Protocol: HTTPS POST, `Content-Type: application/json`
+- Body: `{ "dpsXmlGZipB64": "<gzip(XML) as base64>" }` — GZip the signed DPS XML then Base64-encode
+- Mutual TLS: client certificate from `portal_credentials.certificate_data` (A1 PFX)
+- Homologation URL: `https://sefin.producaorestrita.nfse.gov.br/SefinNacional/nfse`
+- Production URL: `https://sefin.nfse.gov.br/SefinNacional/nfse`
+
+Success response (HTTP 200):
+```json
+{
+  "tipoAmbiente": 2,
+  "versaoAplicativo": "SefinNacional_1.6.0",
+  "dataHoraProcessamento": "2026-05-12T10:36:44.769-03:00",
+  "idDps": "NFS43149022251381464000207000000000000926050443066281",
+  "chaveAcesso": "43149022251381464000207000000000000926050443066281",
+  "nfseXmlGZipB64": "<gzip(NFS-e XML) as base64>",
+  "alertas": null
+}
+```
+
+Error response (HTTP 400/403/500):
+```json
+{
+  "tipoAmbiente": 2,
+  "versaoAplicativo": "SefinNacional_1.6.0",
+  "dataHoraProcessamento": "...",
+  "idDPS": "...",
+  "erros": [{ "Codigo": "E0617", "Descricao": "..." }]
+}
+```
+
+Known SEFIN error codes encountered:
+
+| Code | Cause | Fix |
+|---|---|---|
+| E0008 | `dhEmi` posterior to processing time | Use BRT for `dhEmi`, not UTC |
+| E0202 | Issuer CNPJ == consumer CNPJ | Use different consumer |
+| E0617 | `pAliq` provided for non-Simples issuer on nacional system | Omit `pAliq` when `opSimpNac=1` |
+| E0922 | Consumer municipality doesn't match RFB record for CPF | Use `indDest=0` (B2C) or a real CPF registered at the correct municipality |
+| E0314 | `cTribMun` value doesn't exist in the municipality's service list | Omit `cTribMun` (no safe default) or look up the correct municipal code |
+
+### 4.3 Fiscal Code Validation Responsibility
 
 | Code | Validated by microservice | Validated by accounting manager |
 |---|---|---|

@@ -31,9 +31,8 @@ Important:
 
 - requests without a valid API key will be rejected with `401 Unauthorized`;
 - the API key is an application credential, not an end-user credential;
-- PassouLavou should load this key from secure configuration such as environment variables or a secrets manager, never hardcode it in source code.
-
-> **⚠️ Planned change (INV-1):** The current shared key will be replaced by per-client API keys stored in an `api_clients` table. Each client will receive its own key that can be revoked independently. The header name (`X-Api-Key`) and usage pattern will remain the same, but the key value will be client-specific. Update the configured key after INV-1 is deployed.
+- PassouLavou should load this key from secure configuration such as environment variables or a secrets manager, never hardcode it in source code;
+- each client has its own key stored as a SHA-256 hash in the `api_clients` table; keys are issued via the admin endpoint and can be revoked independently.
 
 ## Endpoint Summary
 
@@ -86,7 +85,6 @@ The request body maps to `EmitInvoiceCommand`.
     "amount": 1,
     "issuedAt": "2026-02-23T15:13:15.387Z",
     "serviceTypeKey": "vehicle-wash-45200-05",
-    "municipalTaxCode": "",
     "issRate": 0.035,
     "pisCofinsCts": 1,
     "aliquotaPis": 0.00,
@@ -117,8 +115,7 @@ The request body maps to `EmitInvoiceCommand`.
 - `amount`: required decimal. Must be `> 0` and `< 1000000`.
 - `issuedAt`: required date. Cannot be in the future.
 - `serviceTypeKey`: optional by validator, but should be treated as required by the integration. It is used to resolve tax/service mapping.
-- `municipalTaxCode`: optional string.
-- `issRate`: required decimal between `0.02` and `0.05`.
+- `issRate`: required decimal between `0.02` and `0.05`. Always send the issuer's ISS rate. Note: for issuers on the Nacional portal that are not Simples Nacional (Lucro Presumido / Lucro Real), the microservice does **not** emit `pAliq` in the DPS XML — SEFIN Nacional infers the rate for those regimes. The field is still required in the request regardless of portal type.
 - `pisCofinsCts`: optional integer, but if sent it must be one of: `1-9`, `49-56`, `60-67`, `70-75`, `98`, `99`.
 - `aliquotaPis`: decimal.
 - `aliquotaCofins`: decimal.
