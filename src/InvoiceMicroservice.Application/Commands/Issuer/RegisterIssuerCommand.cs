@@ -7,7 +7,7 @@ namespace InvoiceMicroservice.Application.Commands.Issuer;
 public record RegisterIssuerCommand
 {
     public required string Cnpj { get; init; }
-    public required string MunicipalInscription { get; init; }
+    public string? MunicipalInscription { get; init; }
     public required string TradeName { get; init; }
     public required string LegalName { get; init; }
     private string _cnae = string.Empty;

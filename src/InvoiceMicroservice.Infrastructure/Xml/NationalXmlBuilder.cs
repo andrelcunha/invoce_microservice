@@ -118,8 +118,10 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var infDps = El("infDPS", new XAttribute("Id", id));
         // tpAmp - Tipo de Ambiente (1=Produção, 2=Homologação)
         infDps.Add(El("tpAmb", isTestMode ? "2" : "1")); // 1 - Produção, 2 - Homologação
-        // dhEmi - Data e Hora de Emissão (ISO 8601)
-        infDps.Add(El("dhEmi", DateTime.Now.ToString("yyyy-MM-ddTHH:mm:sszzz")));
+        // dhEmi - Data e Hora de Emissão (ISO 8601) — must be in BRT; SEFIN treats bare offsets as local time
+        var brt = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+        var dhEmi = TimeZoneInfo.ConvertTime(DateTime.UtcNow, brt);
+        infDps.Add(El("dhEmi", dhEmi.ToString("yyyy-MM-ddTHH:mm:sszzz")));
         // verAplic - Versão do Aplicativo
         infDps.Add(El("verAplic", "1.0.0")); // Hardcoded for MVP
         // serie
@@ -138,7 +140,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         infDps.Add(BuildDpsToma(consumer, codMunToma));
         // grupo 'interm' -- não se aplica
         infDps.Add(await BuildServAsync(invoice, issuer, serviceCodes, ct));
-        infDps.Add(BuildValoresAsync(invoice));
+        infDps.Add(BuildValoresAsync(invoice, issuer));
         infDps.Add(await BuildIbsCbsAsync(invoice, issuer, consumer, serviceCodes, ct));
         return infDps;
     }
@@ -272,9 +274,8 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var cServ = El("cServ");
         // cTribNac - Código de Tributação Nacional do ISSQN
         cServ.Add(El("cTribNac", Helpers.StripDots(codes.ServiceListCode)));
-        // cTribMun
-        // if (!string.IsNullOrWhiteSpace(invoice.MunicipalTaxCode))
-        cServ.Add(El("cTribMun", Helpers.StripDots("001")));
+        // cTribMun: municipality-specific service code — omitted when unknown;
+        // each municipality maintains its own list so there is no safe default.
         // xDescServ
         cServ.Add(El("xDescServ", Helpers.EscapeXmlContent(invoice.ServiceDescription)));
         // cNBS
@@ -289,7 +290,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         return servico;
     }
 
-    private XElement BuildValoresAsync(InvoiceXmlPayload invoice)
+    private XElement BuildValoresAsync(InvoiceXmlPayload invoice, IssuerDto issuer)
     {
         // grupo valores
         var valores = El("valores");
@@ -298,7 +299,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var temIntermediario = false; // Hardcoded for MVP
         if (temIntermediario)
         {
-            vServPrest.Add(El("vReceb", FormatMonetary(invoice.Amount))); // valor recebido pelo intermediário  
+            vServPrest.Add(El("vReceb", FormatMonetary(invoice.Amount))); // valor recebido pelo intermediário
         }
         vServPrest.Add(El("vServ", FormatMonetary(invoice.Amount)));
         valores.Add(vServPrest);
@@ -315,7 +316,10 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         tribMun.Add(El("tribISSQN", tribISSQN)); // 1 = Tributável, 2 = Imunidade, 3 - Exportação, 4 - Não Incidência
         var tpRetISSQN = 1; // 1 = Não Retido (default)
         tribMun.Add(El("tpRetISSQN", tpRetISSQN)); // 1 = Não Retido, 2 = Retido pelo tomador 3 = Retido pelo intermediário
-        if (tribISSQN == 1) // pAliq apenas para operações tributáveis; omitido em imunidade/exportação/não-incidência
+        // pAliq: only for Simples Nacional issuers (opSimpNac != 1). Non-Simples issuers on the Nacional system
+        // must NOT inform pAliq — the portal infers the rate from its own table (E0617).
+        var opSimpNac = EvaluateSimplesNacionalRegime(issuer);
+        if (tribISSQN == 1 && opSimpNac != 1)
             tribMun.Add(El("pAliq", FormatRate(invoice.IssRate)));
         trib.Add(tribMun);
 
@@ -375,16 +379,10 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // ibscbs.Add(new XElement("gRefNFSe", new XElement("refNFSe", "...")));
 
 
-        // Indicador de Destino da Operação
-        var indDest = 1;  // Hardcoded for MVP: 1 = oper
-        ibscbs.Add(El("indDest", indDest)); // 0 = tomador=adquirente=destinatario; 1 = tomador diferente do adquirente/destinatario
-
-        // Destinatario (Recipient) - Required for IBS/CBS
-        if (indDest == 1)
-        {
-            var dest = await BuildDestinatarioAsync(consumer, ct);
-            ibscbs.Add(dest);
-        }
+        // indDest=0: tomador = adquirente = destinatário (B2C car wash — same person)
+        // indDest=1 would require a separate <dest> element and triggers RFB municipality cross-check
+        var indDest = 0;
+        ibscbs.Add(El("indDest", indDest));
 
         // Imovel (Property) - Omit unless real estate
         // ibscbs.Add(BuildImovelSection(...));

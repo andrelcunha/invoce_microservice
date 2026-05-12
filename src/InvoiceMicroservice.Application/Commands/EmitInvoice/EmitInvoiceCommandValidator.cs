@@ -83,7 +83,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
                 .Must(ValidationHelpers.BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
 
             RuleFor(x => x.MunicipalInscription)
-                .NotEmpty().MaximumLength(20);
+                .MaximumLength(20).When(x => x.MunicipalInscription != null);
 
             RuleFor(x => x.Name)
                 .NotEmpty()

@@ -150,7 +150,7 @@ public class InvoiceDbContext : DbContext
             entity.Property(e => e.MunicipalInscription)
                 .HasColumnName("municipal_inscription")
                 .HasMaxLength(50)
-                .IsRequired();
+                .IsRequired(false);
 
             entity.Property(e => e.TradeName)
                 .HasColumnName("trade_name")

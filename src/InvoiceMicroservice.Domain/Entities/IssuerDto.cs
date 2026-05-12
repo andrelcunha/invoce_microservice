@@ -3,7 +3,7 @@ namespace InvoiceMicroservice.Domain.Entities;
 public class IssuerDto
 {
     public string Cnpj { get; set; } = null!;
-    public string MunicipalInscription { get; set; } = null!;
+    public string? MunicipalInscription { get; set; }
     public string Name { get; set; } = null!;
     public string Cnae { get; set; } = null!;
     public Address Address { get; set; } = null!;

@@ -6,7 +6,7 @@ public class IssuerEntity
 {
     public Guid Id { get; set; }
     public Cnpj Cnpj { get; set; } = null!;
-    public string MunicipalInscription { get; set; } = null!;
+    public string? MunicipalInscription { get; set; }
     public string TradeName { get; set; } = null!;
     public string LegalName { get; set; } = null!;
     public string Cnae { get; set; } = null!;
