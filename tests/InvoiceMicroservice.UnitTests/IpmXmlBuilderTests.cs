@@ -13,14 +13,14 @@ namespace InvoiceMicroservice.Tests.Infrastructure.Xml;
 public class IpmXmlBuilderTests
 {
     private readonly Mock<IServiceTypeTaxMappingRepository> _mockServiceTaxRepo;
-    private readonly Mock<IMunicipalityRepository> _mockMunicipalityRepo;
+    private readonly Mock<IApiClient> _mockApiClient;
     private readonly TaxConfig _taxConfig;
     private readonly IpmXmlBuilder _builder;
 
     public IpmXmlBuilderTests()
     {
         _mockServiceTaxRepo = new Mock<IServiceTypeTaxMappingRepository>();
-        _mockMunicipalityRepo = new Mock<IMunicipalityRepository>();
+        _mockApiClient = new Mock<IApiClient>();
 
         _taxConfig = new TaxConfig
         {
@@ -30,11 +30,9 @@ public class IpmXmlBuilderTests
             PRedAliqUf = 0.0m,
             PRedAliqMun = 0.0m,
             PRedAliqCbs = 0.0m,
-            PAliquotaPis = 0.0065m,
-            PAliquotaCofins = 0.03m
         };
 
-        _builder = new IpmXmlBuilder(_taxConfig, _mockServiceTaxRepo.Object, _mockMunicipalityRepo.Object);
+        _builder = new IpmXmlBuilder(_taxConfig, _mockServiceTaxRepo.Object, _mockApiClient.Object);
     }
 
     [Fact]
@@ -387,8 +385,6 @@ public class IpmXmlBuilderTests
             .Setup(x => x.GetByServiceTypeKeyAsync(It.IsAny<string>(), default))
             .ReturnsAsync(customMapping);
 
-        SetupMockMunicipalities();
-
         // Act
         var xml = await _builder.BuildInvoiceXmlAsync(invoice, isTestMode: true);
 
@@ -411,15 +407,13 @@ public class IpmXmlBuilderTests
             .Setup(x => x.GetByCnaeCodeAsync(It.IsAny<string>(), default))
             .ReturnsAsync((ServiceTypeTaxMapping?)null);
 
-        SetupMockMunicipalities();
-
         // Act
         var xml = await _builder.BuildInvoiceXmlAsync(invoice, isTestMode: true);
 
         // Assert - Should use default codes
         var doc = XDocument.Parse(xml);
         var nbsCode = doc.Root?.Element("itens")?.Element("lista")?.Element("codigo_nbs");
-        nbsCode!.Value.Should().Be("123456789"); // Default NBS
+        nbsCode!.Value.Should().Be("118032900"); // ServiceTypeTaxCodes.Default() NBS
     }
 
     // Helper methods
@@ -430,7 +424,6 @@ public class IpmXmlBuilderTests
         {
             Cnpj = "12.345.678/0001-95",
             Name = "Empresa Teste Ltda",
-            // Email = "contato@empresa.com.br",
             Cnae = "45.20-0-05",
             Address = new Address
             {
@@ -440,7 +433,9 @@ public class IpmXmlBuilderTests
                 Neighborhood = "Centro",
                 City = "Concórdia",
                 Uf = "SC",
-                ZipCode = "89700-000"
+                ZipCode = "89700-000",
+                IbgeCode = "4204301",
+                TomCode = "8083"
             }
         };
 
@@ -457,7 +452,9 @@ public class IpmXmlBuilderTests
                 Neighborhood = "Bairro Novo",
                 City = "Florianópolis",
                 Uf = "SC",
-                ZipCode = "88000-000"
+                ZipCode = "88000-000",
+                IbgeCode = "4205407",
+                TomCode = "8105"
             }
         };
 
@@ -479,7 +476,9 @@ public class IpmXmlBuilderTests
             ServiceTypeKey = "vehicle-wash-45200-05",
             AliquotaPis = 0.0065m,
             AliquotaCofins = 0.03m,
-            PisCofinsCts = "01"
+            PisCofinsCts = "01",
+            IbsCbsCst = "200",
+            IbsCbsClassTrib = "140001"
         };
     }
 
@@ -489,7 +488,6 @@ public class IpmXmlBuilderTests
         {
             Cnpj = "12.345.678/0001-95",
             Name = "Empresa Teste Ltda",
-            // Email = "contato@empresa.com.br",
             Cnae = "45.20-0-05",
             Address = new Address
             {
@@ -497,7 +495,9 @@ public class IpmXmlBuilderTests
                 Number = "123",
                 City = "Concórdia",
                 Uf = "SC",
-                ZipCode = "89700-000"
+                ZipCode = "89700-000",
+                IbgeCode = "4204301",
+                TomCode = "8083"
             }
         };
 
@@ -512,7 +512,9 @@ public class IpmXmlBuilderTests
                 Number = "789",
                 City = "Florianópolis",
                 Uf = "SC",
-                ZipCode = "88000-000"
+                ZipCode = "88000-000",
+                IbgeCode = "4205407",
+                TomCode = "8105"
             }
         };
 
@@ -544,7 +546,6 @@ public class IpmXmlBuilderTests
         {
             Cnpj = "12.345.678/0001-95",
             Name = "Empresa <Test> & Cia",
-            // Email = "test@empresa.com",
             Cnae = "45.20-0-05",
             Address = new Address
             {
@@ -552,7 +553,9 @@ public class IpmXmlBuilderTests
                 Number = "123",
                 City = "Concórdia",
                 Uf = "SC",
-                ZipCode = "89700-000"
+                ZipCode = "89700-000",
+                IbgeCode = "4204301",
+                TomCode = "8083"
             }
         };
 
@@ -567,7 +570,9 @@ public class IpmXmlBuilderTests
                 Number = "456",
                 City = "Florianópolis",
                 Uf = "SC",
-                ZipCode = "88000-000"
+                ZipCode = "88000-000",
+                IbgeCode = "4205407",
+                TomCode = "8105"
             }
         };
 
@@ -609,21 +614,5 @@ public class IpmXmlBuilderTests
         _mockServiceTaxRepo
             .Setup(x => x.GetByServiceTypeKeyAsync("vehicle-wash-45200-05", default))
             .ReturnsAsync(vehicleWashMapping);
-
-        SetupMockMunicipalities();
-    }
-
-    private void SetupMockMunicipalities()
-    {
-        var concordia = Municipality.Create("4204301", "Concórdia", "SC", "8083");
-        var florianopolis = Municipality.Create("4205407", "Florianópolis", "SC", "8105");
-
-        _mockMunicipalityRepo
-            .Setup(x => x.GetByCityAndUfAsync("Concórdia", "SC", default))
-            .ReturnsAsync(concordia);
-
-        _mockMunicipalityRepo
-            .Setup(x => x.GetByCityAndUfAsync("Florianópolis", "SC", default))
-            .ReturnsAsync(florianopolis);
     }
 }

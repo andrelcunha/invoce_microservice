@@ -16,7 +16,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
     public IpmXmlBuilder(
         TaxConfig taxConfig,
         IServiceTypeTaxMappingRepository serviceTaxRepo,
-        IpmApiClient apiClient)
+        IApiClient apiClient)
     {
         _taxConfig = taxConfig;
         _serviceTaxRepo = serviceTaxRepo;
@@ -30,7 +30,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 
     public IApiClient GetApiClient() => _apiClient;
 
-    public async Task<string> BuildInvoiceXmlAsync(InvoiceXmlPayload invoice, bool isTestMode, CancellationToken cancellationToken)
+    public async Task<string> BuildInvoiceXmlAsync(InvoiceXmlPayload invoice, bool isTestMode = true, CancellationToken cancellationToken = default)
     {
         var jsonOptions = new JsonSerializerOptions
         {
@@ -194,7 +194,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         if (!int.TryParse(value, out var parsed) || parsed <= 0)
             return null;
 
-        return parsed.ToString(CultureInfo.InvariantCulture);
+        return parsed.ToString("D2", CultureInfo.InvariantCulture);
     }
 
     private async Task<XElement> BuildIbsCbsNfSectionAsync(decimal amount, CancellationToken cancellationToken)

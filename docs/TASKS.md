@@ -10,6 +10,7 @@ Backlog and completed work for the `invoce_microservice` repo. The `passoulavou-
 - [x] PIS/COFINS CST zero-padding missing in `NationalXmlBuilder` — fixed: `.ToString()` → `.ToString("D2")`
 - [x] **[INV-1]** Per-client API key auth: `api_clients` table, SHA-256 hash lookup, `clientId` claim validated against request body, `POST /api/clients` admin endpoint, EF migration generated (`AddApiClientsTable`)
 - [x] **[INV-4]** Retry policy already implemented in `InvoiceEmissionWorker` + `InvoiceEmissionJobRepository`: `FailedRetryable` (exponential backoff, 2^attempts × 15s) vs `FailedPermanent` (after 5 attempts); `ClaimPendingAsync` picks up retryable jobs atomically via `FOR UPDATE SKIP LOCKED`
+- [x] **[IPM-2]** `NormalizePisCofinsCst` now uses `.ToString("D2")` — CST is correctly zero-padded to 2 digits (e.g. `"01"` not `"1"`)
 
 ---
 
