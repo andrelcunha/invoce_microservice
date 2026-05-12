@@ -135,15 +135,17 @@ public class IpmApiClient : IApiClient
                 // Capture cookies for subsequent requests
                 CaptureCookiesFromResponse(response, baseUrl);
 
-                // Read response body
-                var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
+                // Read response respecting the XML encoding declaration (IPM returns ISO-8859-1)
+                using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var responseDoc = XDocument.Load(responseStream);
+                var responseXml = responseDoc.ToString();
 
                 _logger.LogDebug("IPM response (HTTP {StatusCode}): {ResponseXml}",
                     (int)response.StatusCode,
                     responseXml);
 
                 // Parse response (success determined by XML content, not HTTP status)
-                return ParseResponse(responseXml);
+                return ParseResponse(responseDoc);
             }
             catch (TaskCanceledException ex)
             {
@@ -270,11 +272,11 @@ public class IpmApiClient : IApiClient
         return xmlDoc.OuterXml;
     }
 
-    private NfseSubmissionResult ParseResponse(string responseXml)
+    private NfseSubmissionResult ParseResponse(XDocument doc)
     {
+        var responseXml = doc.ToString();
         try
         {
-            var doc = XDocument.Parse(responseXml);
             var root = doc.Root;
 
             if (root == null)
@@ -287,22 +289,39 @@ public class IpmApiClient : IApiClient
                 };
             }
 
-            // Parse <retorno> structure per integration guide
-            var sucessoStr = root.Element("sucesso")?.Value ?? "false";
-            var mensagem = root.Element("mensagem")?.Value ?? "";
+            // IPM actual response structure (observed):
+            //   <retorno>
+            //     <mensagem><codigo>NFS-e válida para emissão.</codigo></mensagem>
+            //     <numero_nfse>1</numero_nfse>
+            //     <situacao_codigo_nfse>1</situacao_codigo_nfse>      (1 = Emitida)
+            //     <situacao_descricao_nfse>Emitida</situacao_descricao_nfse>
+            //     <cod_verificador_autenticidade>...</cod_verificador_autenticidade>
+            //     <link_nfse>...</link_nfse>
+            //   </retorno>
+            // Note: <sucesso> is not present in observed responses — use situacao_codigo_nfse instead.
+            var mensagem = root.Element("mensagem")?.Element("codigo")?.Value
+                        ?? root.Element("mensagem")?.Value
+                        ?? "";
             var numeroNfse = root.Element("numero_nfse")?.Value;
+            var situacaoCodigo = root.Element("situacao_codigo_nfse")?.Value;
+            var situacaoDescricao = root.Element("situacao_descricao_nfse")?.Value;
             var codVerificador = root.Element("cod_verificador_autenticidade")?.Value;
-            var linkPdf = root.Element("link_pdf")?.Value;
+            var linkNfse = root.Element("link_nfse")?.Value ?? root.Element("link_pdf")?.Value;
 
-            var success = sucessoStr.Equals("true", StringComparison.OrdinalIgnoreCase);
+            // Fallback: honour <sucesso> if present (may appear in some portal versions)
+            var sucessoStr = root.Element("sucesso")?.Value;
+            bool success;
+            if (sucessoStr is not null)
+                success = sucessoStr.Equals("true", StringComparison.OrdinalIgnoreCase);
+            else
+                success = situacaoCodigo == "1" || !string.IsNullOrEmpty(numeroNfse);
 
             var messages = new List<string>();
             if (!string.IsNullOrEmpty(mensagem))
-            {
                 messages.Add(mensagem);
-            }
+            if (!string.IsNullOrEmpty(situacaoDescricao) && situacaoDescricao != mensagem)
+                messages.Add(situacaoDescricao);
 
-            // Check for additional error/warning messages
             foreach (var msgElement in root.Descendants("erro").Concat(root.Descendants("aviso")))
             {
                 var code = msgElement.Element("codigo")?.Value;
@@ -313,34 +332,27 @@ public class IpmApiClient : IApiClient
             var result = new NfseSubmissionResult
             {
                 Success = success,
-                Protocol = numeroNfse, // IPM uses numero_nfse as protocol/identifier
+                Protocol = numeroNfse,
                 InvoiceNumber = numeroNfse,
                 VerificationCode = codVerificador,
-                PdfUrl = linkPdf,
+                PdfUrl = linkNfse,
                 Messages = messages,
                 RawResponse = responseXml
             };
 
             if (success)
-            {
                 _logger.LogInformation(
                     "IPM submission successful. Invoice: {InvoiceNumber}, Verification: {VerificationCode}",
-                    numeroNfse,
-                    codVerificador);
-            }
+                    numeroNfse, codVerificador);
             else
-            {
-                _logger.LogWarning(
-                    "IPM submission failed. Messages: {Messages}",
+                _logger.LogWarning("IPM submission failed. Messages: {Messages}",
                     string.Join("; ", messages));
-            }
 
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to parse IPM response: {ResponseXml}", responseXml);
-
             return new NfseSubmissionResult
             {
                 Success = false,

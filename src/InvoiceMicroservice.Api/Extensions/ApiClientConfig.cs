@@ -15,6 +15,7 @@ public static class ApiClientConfig
     {
         services.Configure<PortalConfigs>(configuration.GetSection(PortalConfigs.SectionName));
         services.AddScoped<IpmApiClient>();
+        services.AddScoped<IApiClient>(sp => sp.GetRequiredService<IpmApiClient>());
         services.AddScoped<NationalApiClient>();
         return services;
     }

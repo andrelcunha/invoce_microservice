@@ -11,6 +11,8 @@ Backlog and completed work for the `invoce_microservice` repo. The `passoulavou-
 - [x] **[INV-1]** Per-client API key auth: `api_clients` table, SHA-256 hash lookup, `clientId` claim validated against request body, `POST /api/clients` admin endpoint, EF migration generated (`AddApiClientsTable`)
 - [x] **[INV-4]** Retry policy already implemented in `InvoiceEmissionWorker` + `InvoiceEmissionJobRepository`: `FailedRetryable` (exponential backoff, 2^attempts × 15s) vs `FailedPermanent` (after 5 attempts); `ClaimPendingAsync` picks up retryable jobs atomically via `FOR UPDATE SKIP LOCKED`
 - [x] **[IPM-2]** `NormalizePisCofinsCst` now uses `.ToString("D2")` — CST is correctly zero-padded to 2 digits (e.g. `"01"` not `"1"`)
+- [x] **[IPM-R1]** IPM response encoding — switched from `ReadAsStringAsync()` to `XDocument.Load(stream)` so ISO-8859-1 responses are decoded correctly (Portuguese chars were appearing as `�`)
+- [x] **[IPM-R2]** IPM response parser — fixed `<mensagem>` text path (was `root.Element("mensagem").Value`, actual text is in `<mensagem><codigo>`); fixed success detection (no `<sucesso>` element in real responses — now uses `<situacao_codigo_nfse>=="1"` with `<sucesso>` as fallback)
 
 ---
 

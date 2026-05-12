@@ -166,20 +166,34 @@ Required by some municipalities:
 
 ### 2.6 Response Format
 
-Root element: `<retorno>`
+Root element: `<retorno>`. Encoding: **ISO-8859-1** — always read the response stream via `XDocument.Load(stream)` to respect the XML declaration; `ReadAsStringAsync()` will corrupt Portuguese characters.
+
+Observed real response structure (Concórdia/SC, test mode):
 
 ```xml
+<?xml version="1.0" encoding="ISO-8859-1"?>
 <retorno>
-  <sucesso>true</sucesso>
-  <mensagem>Nota fiscal emitida com sucesso</mensagem>
-  <numero_nfse>123456</numero_nfse>
-  <cod_verificador_autenticidade>ABCDEF12345</cod_verificador_autenticidade>
-  <link_pdf>https://concordia.atende.net/nfse/123456.pdf</link_pdf>
+  <mensagem>
+    <codigo>NFS-e válida para emissão.</codigo>
+  </mensagem>
+  <numero_nfse>4</numero_nfse>
+  <serie_nfse>1</serie_nfse>
+  <data_nfse>12/05/2026</data_nfse>
+  <hora_nfse>09:59:02</hora_nfse>
+  <situacao_codigo_nfse>1</situacao_codigo_nfse>          <!-- 1 = Emitida -->
+  <situacao_descricao_nfse>Emitida</situacao_descricao_nfse>
+  <link_nfse>https://concordia.atende.net/.../identificador/...</link_nfse>
+  <cod_verificador_autenticidade>8083120526095902...</cod_verificador_autenticidade>
 </retorno>
 ```
 
+Key differences from initially documented format:
+- **No `<sucesso>` element** — success is determined by `<situacao_codigo_nfse>` == `"1"`, or fallback to `<numero_nfse>` being non-empty. `<sucesso>` may appear in some portal versions; honour it if present.
+- **`<mensagem>` is a wrapper** — the text is in `<mensagem><codigo>`, not directly in `<mensagem>`.
+- **`<link_nfse>` not `<link_pdf>`** — the PDF/detail link uses `link_nfse` in Concórdia; check both.
+
 - HTTP status may be `< 500` even on business errors — always parse the XML body
-- Success criteria: `<sucesso>true</sucesso>` AND non-empty `<numero_nfse>`
+- In test mode (`<nfse_teste>1</nfse_teste>`), IPM validates and returns a test NFS-e number without registering a real invoice.
 
 ### 2.7 XML Escaping
 
