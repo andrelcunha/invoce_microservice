@@ -72,7 +72,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         //     throw new InvalidOperationException("IpmXmlBuilder: ServiceListCode is null/empty.");
 
         // Lookup service type codes - fallback to defaults if not found
-        var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
+        var serviceCodes = await Helpers.GetServiceCodesAsync(_serviceTaxRepo, invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
         var root = new XElement("nfse",
             new XAttribute("id", "nota")
@@ -111,28 +111,6 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         return doc.ToString(SaveOptions.DisableFormatting);
     }
 
-    private async Task<ServiceTypeTaxCodes> GetServiceCodesAsync(string? serviceTypeKey, string? cnaeCode, CancellationToken cancellationToken)
-    {
-        // Try lookup by service type key
-        if (!string.IsNullOrEmpty(serviceTypeKey))
-        {
-            var mapping = await _serviceTaxRepo.GetByServiceTypeKeyAsync(serviceTypeKey, cancellationToken);
-            if (mapping != null)
-                return new ServiceTypeTaxCodes(mapping);
-        }
-
-        // Fallback: try lookup by CNAE
-        if (!string.IsNullOrEmpty(cnaeCode))
-        {
-            var mapping = await _serviceTaxRepo.GetByCnaeCodeAsync(cnaeCode, cancellationToken);
-            if (mapping != null)
-                return new ServiceTypeTaxCodes(mapping);
-        }
-
-        // Ultimate fallback: default codes
-        return ServiceTypeTaxCodes.Default();
-    }
-
     private async Task<XElement> BuildNfSectionAsync(InvoiceXmlPayload invoice, CancellationToken cancellationToken)
     {
         var nf = new XElement("nf");
@@ -169,7 +147,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
     private XElement BuildPisCofinsSection(InvoiceXmlPayload invoice)
     {
         var pisCofins = new XElement("pis_cofins");
-        var pisCofinsCst = NormalizePisCofinsCst(invoice.PisCofinsCts);
+        var pisCofinsCst = Helpers.NormalizePisCofinsCst(invoice.PisCofinsCts);
 
         // CST code - should be configurable per issuer
         pisCofins.Add(new XElement("cst", pisCofinsCst ?? "1"));
@@ -184,17 +162,6 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         pisCofins.Add(new XElement("aliquota_cofins", Helpers.FormatRate(invoice.AliquotaCofins)));
 
         return pisCofins;
-    }
-
-    private static string? NormalizePisCofinsCst(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        if (!int.TryParse(value, out var parsed) || parsed <= 0)
-            return null;
-
-        return parsed.ToString("D2", CultureInfo.InvariantCulture);
     }
 
     private async Task<XElement> BuildIbsCbsNfSectionAsync(decimal amount, CancellationToken cancellationToken)

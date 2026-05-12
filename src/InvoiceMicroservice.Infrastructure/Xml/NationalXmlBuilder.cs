@@ -77,7 +77,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var root = El("DPS", new XAttribute("versao", "1.01"));
         int serie = invoice.Series; // Hardcoded for MVP TODO: Find a way to get real series/number
         int numero = invoice.Number; // Hardcoded for MVP TODO: Find a way to get real series/number
-        var serviceCodes = await GetServiceCodesAsync(invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
+        var serviceCodes = await Helpers.GetServiceCodesAsync(_serviceTaxRepo, invoice.ServiceTypeKey, issuer.Cnae, cancellationToken);
 
         var infDps = await BuildInfDpsAsync(invoice, issuer, consumer, serviceCodes, serie, numero, isTestMode, cancellationToken);
         root.Add(infDps);
@@ -294,7 +294,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     {
         // grupo valores
         var valores = El("valores");
-        var pisCofinsCst = NormalizePisCofinsCst(invoice.PisCofinsCts);
+        var pisCofinsCst = Helpers.NormalizePisCofinsCst(invoice.PisCofinsCts);
         var vServPrest = El("vServPrest");
         var temIntermediario = false; // Hardcoded for MVP
         if (temIntermediario)
@@ -351,17 +351,6 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         trib.Add(totTrib);
         valores.Add(trib);
         return valores;
-    }
-
-    private static string? NormalizePisCofinsCst(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        if (!int.TryParse(value, out var parsed) || parsed <= 0)
-            return null;
-
-        return parsed.ToString("D2", CultureInfo.InvariantCulture); // spec requires 2-char zero-padded ("01"-"09")
     }
 
     private async Task<XElement> BuildIbsCbsAsync(InvoiceXmlPayload invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes codes, CancellationToken ct)
@@ -459,27 +448,6 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         valores.Add(trib);
 
         return valores;
-    }
-
-    private async Task<ServiceTypeTaxCodes> GetServiceCodesAsync(string? serviceTypeKey, string? cnaeCode, CancellationToken cancellationToken)
-    {
-        // Similar to IPM, but with national codes (e.g., ItemListaServico from LC 116)
-        // Add IBS/CBS specific codes
-        if (!string.IsNullOrEmpty(serviceTypeKey))
-        {
-            var mapping = await _serviceTaxRepo.GetByServiceTypeKeyAsync(serviceTypeKey, cancellationToken);
-            if (mapping != null)
-                return new ServiceTypeTaxCodes(mapping);
-        }
-
-        if (!string.IsNullOrEmpty(cnaeCode))
-        {
-            var mapping = await _serviceTaxRepo.GetByCnaeCodeAsync(cnaeCode, cancellationToken);
-            if (mapping != null)
-                return new ServiceTypeTaxCodes(mapping);
-        }
-
-        return ServiceTypeTaxCodes.Default();
     }
 
     private string SignXml(string xml, byte[] certificateData, string certificatePassword)

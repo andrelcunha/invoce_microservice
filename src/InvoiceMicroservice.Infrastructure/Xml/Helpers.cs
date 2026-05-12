@@ -1,5 +1,6 @@
 using System.Globalization;
 using InvoiceMicroservice.Domain.Entities;
+using InvoiceMicroservice.Domain.Interfaces;
 
 namespace InvoiceMicroservice.Infrastructure.Xml;
 
@@ -82,5 +83,39 @@ internal static class Helpers
     internal static string FormatMonetary(decimal amount)
     {
         return amount.ToString("F2", CultureInfo.GetCultureInfo("pt-BR"));
+    }
+
+    internal static string? NormalizePisCofinsCst(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (!int.TryParse(value, out var parsed) || parsed <= 0)
+            return null;
+
+        return parsed.ToString("D2", CultureInfo.InvariantCulture);
+    }
+
+    internal static async Task<ServiceTypeTaxCodes> GetServiceCodesAsync(
+        IServiceTypeTaxMappingRepository repo,
+        string? serviceTypeKey,
+        string? cnaeCode,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrEmpty(serviceTypeKey))
+        {
+            var mapping = await repo.GetByServiceTypeKeyAsync(serviceTypeKey, cancellationToken);
+            if (mapping != null)
+                return new ServiceTypeTaxCodes(mapping);
+        }
+
+        if (!string.IsNullOrEmpty(cnaeCode))
+        {
+            var mapping = await repo.GetByCnaeCodeAsync(cnaeCode, cancellationToken);
+            if (mapping != null)
+                return new ServiceTypeTaxCodes(mapping);
+        }
+
+        return ServiceTypeTaxCodes.Default();
     }
 }
