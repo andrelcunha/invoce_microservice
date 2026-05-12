@@ -486,3 +486,5 @@ $RECYCLE.BIN/
 
 # Copilot files
 .github/copilot-instructions.md
+
+src/InvoiceMicroservice.Api/national-xml-output/*
