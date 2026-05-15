@@ -63,13 +63,7 @@ Validate at the `totem_fiscal_config` input boundary, not at emission time.
 
 ---
 
-### [IPM-1] PIS/COFINS double-counting in `IpmXmlBuilder` — Priority: Critical
-
-`BuildPisCofinsSection` fills `<pis_cofins>` (próprio) AND `BuildNfSectionAsync` emits `<valor_pis>`/`<valor_cofins>` (retido) simultaneously — double-count bug.
-
-**Fix:** For B2C PassouLavou (não retido): emit `<pis_cofins>` group only; leave `<valor_pis>`/`<valor_cofins>` empty.
-
-File: `src/InvoiceMicroservice.Infrastructure/Xml/IpmXmlBuilder.cs`
+- [x] **[IPM-1]** PIS/COFINS double-counting in `IpmXmlBuilder` — `<pis_cofins>` (próprio) and `<valor_pis>`/`<valor_cofins>` (retido) were both emitted with the full amount. For não-retido (`tipo_retencao=2`), `valor_pis`/`valor_cofins` are now zeroed out; the taker withholds nothing and the portal was counting the same tax twice.
 
 ---
 

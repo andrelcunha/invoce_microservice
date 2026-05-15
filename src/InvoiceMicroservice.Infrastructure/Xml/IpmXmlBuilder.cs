@@ -129,12 +129,16 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         // PIS/COFINS section (required when applicable)
         nf.Add(BuildPisCofinsSection(invoice));
 
-        // Calculate PIS/COFINS values for display
-        // var pisValue = invoice.Amount * _taxConfig.PAliquotaPis;
-        var pisValue = invoice.Amount * invoice.AliquotaPis;
-        var cofinsValue = invoice.Amount * invoice.AliquotaCofins;
-        nf.Add(new XElement("valor_pis", Helpers.FormatMonetary(pisValue)));
-        nf.Add(new XElement("valor_cofins", Helpers.FormatMonetary(cofinsValue)));
+        // <valor_pis>/<valor_cofins> represent amounts WITHHELD BY THE TAKER (retido).
+        // <pis_cofins> above is the issuer's own structural declaration (próprio).
+        // For não-retido (tipo_retencao=2) these must be ZERO — the taker withholds nothing.
+        // Emitting the calculated value here alongside <pis_cofins> causes the portal to
+        // count the same tax twice: once as próprio, once as retido. (IPM-1)
+        var tipoRetencao = invoice.TipoRetencaoPisCofins ?? "2";
+        var pisRetido = tipoRetencao != "2" ? invoice.Amount * invoice.AliquotaPis : 0m;
+        var cofinsRetido = tipoRetencao != "2" ? invoice.Amount * invoice.AliquotaCofins : 0m;
+        nf.Add(new XElement("valor_pis", Helpers.FormatMonetary(pisRetido)));
+        nf.Add(new XElement("valor_cofins", Helpers.FormatMonetary(cofinsRetido)));
 
         nf.Add(new XElement("observacao", Helpers.EscapeXmlContent(invoice.ServiceDescription ?? "")));
 
