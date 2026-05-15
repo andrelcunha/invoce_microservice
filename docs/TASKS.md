@@ -64,26 +64,8 @@ Validate at the `totem_fiscal_config` input boundary, not at emission time.
 ---
 
 - [x] **[IPM-1]** PIS/COFINS double-counting in `IpmXmlBuilder` — `<pis_cofins>` (próprio) and `<valor_pis>`/`<valor_cofins>` (retido) were both emitted with the full amount. For não-retido (`tipo_retencao=2`), `valor_pis`/`valor_cofins` are now zeroed out; the taker withholds nothing and the portal was counting the same tax twice.
-
----
-
-### [IPM-2] `<cst>` zero-padding missing in `IpmXmlBuilder` — Priority: High
-
-`NormalizePisCofinsCst` returns `"1"` instead of `"01"`. IPM spec requires exactly 2 digits.
-
-**Fix:** `.ToString("D2", CultureInfo.InvariantCulture)`
-
-File: `src/InvoiceMicroservice.Infrastructure/Xml/IpmXmlBuilder.cs`
-
----
-
-### [IPM-3] `data_fato_gerador` uses server date — Priority: High
-
-Uses `DateTime.Today` (server date at processing time) instead of the actual service date from the invoice.
-
-**Fix:** `invoice.IssuedAt.ToString("dd/MM/yyyy")`
-
-File: `src/InvoiceMicroservice.Infrastructure/Xml/IpmXmlBuilder.cs`
+- [x] **[IPM-2]** `<cst>` zero-padding — `NormalizePisCofinsCst` already uses `.ToString("D2")` in `Helpers.cs`; backlog entry was stale.
+- [x] **[IPM-3]** `data_fato_gerador` now uses `invoice.IssuedAt` (converted to BRT) instead of `DateTime.Today`. A job processed at midnight would have stamped the wrong day.
 
 ---
 

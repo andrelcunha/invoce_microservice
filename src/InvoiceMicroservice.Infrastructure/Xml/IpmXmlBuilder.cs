@@ -118,7 +118,13 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         nf.Add(new XElement("serie_nfse", string.IsNullOrEmpty(invoice.Series.ToString()) ? "1" : invoice.Series.ToString())); // Default to "1" if series is not provided
 
         // Basic invoice values - use COMMA as decimal separator per IPM XSD
-        nf.Add(new XElement("data_fato_gerador", DateTime.Today.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
+        // Use the invoice service date, not the server date at processing time.
+        // A job processed at midnight could stamp the wrong day if DateTime.Today were used. (IPM-3)
+        var brt = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+        var serviceDate = invoice.IssuedAt.HasValue
+            ? TimeZoneInfo.ConvertTimeFromUtc(invoice.IssuedAt.Value.ToUniversalTime(), brt)
+            : TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, brt);
+        nf.Add(new XElement("data_fato_gerador", serviceDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)));
         nf.Add(new XElement("valor_total", Helpers.FormatMonetary(invoice.Amount)));
         nf.Add(new XElement("valor_desconto", Helpers.FormatMonetary(0)));
         nf.Add(new XElement("valor_ir", Helpers.FormatMonetary(0)));
