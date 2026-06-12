@@ -66,6 +66,8 @@ Validate at the `totem_fiscal_config` input boundary, not at emission time.
 - [x] **[IPM-1]** PIS/COFINS double-counting in `IpmXmlBuilder` — `<pis_cofins>` (próprio) and `<valor_pis>`/`<valor_cofins>` (retido) were both emitted with the full amount. For não-retido (`tipo_retencao=2`), `valor_pis`/`valor_cofins` are now zeroed out; the taker withholds nothing and the portal was counting the same tax twice.
 - [x] **[IPM-2]** `<cst>` zero-padding — `NormalizePisCofinsCst` already uses `.ToString("D2")` in `Helpers.cs`; backlog entry was stale.
 - [x] **[IPM-3]** `data_fato_gerador` now uses `invoice.IssuedAt` (converted to BRT) instead of `DateTime.Today`. A job processed at midnight would have stamped the wrong day.
+- [x] **[IPM-4]** `<tipo_retencao>` removed from `<pis_cofins>`. IPM deprecated the field; retention is now inferred from presence/absence of `valor_pis`/`valor_cofins` in `<nf>`.
+- [x] **[IPM-5]** `<tributa_municipio_tomador>N</tributa_municipio_tomador>` added to `<itens><lista>` alongside `tributa_municipio_prestador`. Required by spec; value is `N` because for B2C car-wash the service is taxed in the issuer's municipality, not the consumer's.
 
 ---
 

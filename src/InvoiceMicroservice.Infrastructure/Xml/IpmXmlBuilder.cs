@@ -162,8 +162,8 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         // CST code - should be configurable per issuer
         pisCofins.Add(new XElement("cst", pisCofinsCst ?? "1"));
 
-        // Retention type: 1=Retained, 2=Not Retained, 3=PIS Retained/COFINS Not, 4=PIS Not/COFINS Retained
-        pisCofins.Add(new XElement("tipo_retencao", invoice.TipoRetencaoPisCofins ?? "2")); // Default: not retained
+        // tipo_retencao omitted: IPM deprecated this field; retention is now inferred from
+        // the presence/absence of valor_pis/valor_cofins in <nf>. (IPM-4)
 
         pisCofins.Add(new XElement("base_calculo", Helpers.FormatMonetary(invoice.Amount)));
 
@@ -368,6 +368,8 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 
         // Service location and taxation
         lista.Add(new XElement("tributa_municipio_prestador", "S"));
+        // N: service is taxed in the issuer's municipality, not the consumer's (B2C car-wash). (IPM-5)
+        lista.Add(new XElement("tributa_municipio_tomador", "N"));
 
         // var issuerTomCode = await GetTomCodeAsync(issuer.Address.City, issuer.Address.Uf, cancellationToken);
         lista.Add(new XElement("codigo_local_prestacao_servico", issuer.Address.TomCode));
