@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Cryptography.Xml;
 using System.Text.Json;
@@ -112,7 +113,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
     private async Task<XElement> BuildInfDpsAsync(InvoiceXmlPayload invoice, IssuerDto issuer, Consumer consumer, ServiceTypeTaxCodes serviceCodes, int serie, int numero, bool isTestMode, CancellationToken ct)
     {
         var codMun = issuer.Address.IbgeCode;
-        var codMunToma = consumer.Address.IbgeCode;
+        var codMunToma = await ResolveConsumerIbgeAsync(consumer, ct);
         _logger.LogInformation("Building infDPS for issuer {IssuerCnpj} in municipality {MunicipalityCode} with series {Serie} and number {Number}", issuer.Cnpj, codMun, serie, numero);
         var id = BuildDpsId(issuer.Cnpj, codMun, serie, numero);
         var infDps = El("infDPS", new XAttribute("Id", id));
@@ -180,6 +181,34 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         prest.Add(regTrib);
         return prest;
     }
+
+    // ViaCEP is the authoritative source for consumer municipality codes.
+    // The caller (passoulavou-api) stores the issuer's IBGE in consumer.Address.IbgeCode,
+    // so we always look up from CEP instead of trusting what was sent.
+    private async Task<string> ResolveConsumerIbgeAsync(Consumer consumer, CancellationToken ct)
+    {
+        var cep = Helpers.OnlyDigits(consumer.Address.ZipCode);
+        if (cep.Length == 8)
+        {
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                var result = await http.GetFromJsonAsync<ViaCepResponse>(
+                    $"https://viacep.com.br/ws/{cep}/json/",
+                    ct);
+                if (result?.Ibge is { Length: > 0 })
+                    return result.Ibge;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "ViaCEP lookup failed for CEP {Cep}; falling back to consumer.Address.IbgeCode", cep);
+            }
+        }
+        return consumer.Address.IbgeCode ?? string.Empty;
+    }
+
+    private sealed record ViaCepResponse(
+        [property: System.Text.Json.Serialization.JsonPropertyName("ibge")] string? Ibge);
 
     private static XElement BuildEndElement(Address address, string codMun)
     {

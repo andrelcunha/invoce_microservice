@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluentValidation;
 using InvoiceMicroservice.Api.Extensions;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
@@ -18,7 +19,12 @@ public class Program
         builder.Services.AddApiClientConfiguration(builder.Configuration);
         builder.Services.AddAuthenticationConfiguration(builder.Configuration);
         builder.Services.AddDependencies();
-        builder.Services.AddControllers();
+        builder.Services.AddControllers()
+            .AddJsonOptions(opts =>
+            {
+                opts.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                opts.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            });
         builder.Services.AddOpenApiConfiguration();
         builder.Services.AddFluentValidationConfiguration();
 

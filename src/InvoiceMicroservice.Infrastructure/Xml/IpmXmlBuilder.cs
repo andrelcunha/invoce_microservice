@@ -167,9 +167,12 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
 
         pisCofins.Add(new XElement("base_calculo", Helpers.FormatMonetary(invoice.Amount)));
 
-        // Rates use comma with max 2 decimals per XSD pattern
-        pisCofins.Add(new XElement("aliquota_pis", Helpers.FormatRate(invoice.AliquotaPis)));
-        pisCofins.Add(new XElement("aliquota_cofins", Helpers.FormatRate(invoice.AliquotaCofins)));
+        // Omit rate tags entirely when zero — IPM error 00401 fires when the tags are
+        // present with a zero value; only emit them when there is an actual rate to declare.
+        if (invoice.AliquotaPis > 0)
+            pisCofins.Add(new XElement("aliquota_pis", Helpers.FormatRate(invoice.AliquotaPis)));
+        if (invoice.AliquotaCofins > 0)
+            pisCofins.Add(new XElement("aliquota_cofins", Helpers.FormatRate(invoice.AliquotaCofins)));
 
         return pisCofins;
     }
