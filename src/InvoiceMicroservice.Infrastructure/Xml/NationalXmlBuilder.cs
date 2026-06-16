@@ -355,7 +355,7 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         var tribFed = El("tribFed");
         var pisCofins = El("piscofins");
         // Código de Situação Tributária do PIS/COFINS
-        pisCofins.Add(El("CST", pisCofinsCst ?? "1"));
+        pisCofins.Add(El("CST", pisCofinsCst ?? "01"));
         if (pisCofinsCst is not null)
             pisCofins.Add(El("vBCPisCofins", FormatMonetary(invoice.Amount))); // Base de Cálculo
         pisCofins.Add(El("pAliqPis", FormatRate(invoice.AliquotaPis)));

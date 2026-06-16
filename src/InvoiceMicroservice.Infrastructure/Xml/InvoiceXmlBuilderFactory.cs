@@ -43,8 +43,14 @@ public class InvoiceXmlBuilderFactory : IInvoiceXmlBuilderFactory
     {
         var cnpj = new Cnpj(issuerCnpj);
         var issuer = await _issuerRepository.GetByCnpjAsync(cnpj, cancellationToken);
-        var credentials = issuer?.PortalCredentials;
-        if (!string.IsNullOrWhiteSpace(issuer?.AddressJson))
+        if (issuer is null)
+        {
+            _logger.LogWarning("Issuer with CNPJ {Cnpj} not found.", issuerCnpj);
+            throw new InvalidOperationException(
+                $"Issuer with CNPJ {issuerCnpj} not found. Register the issuer first.");
+        }
+        var credentials = issuer.PortalCredentials;
+        if (!string.IsNullOrWhiteSpace(issuer.AddressJson))
         {
             Address? address = string.IsNullOrWhiteSpace(issuer.AddressJson)
                 ? null

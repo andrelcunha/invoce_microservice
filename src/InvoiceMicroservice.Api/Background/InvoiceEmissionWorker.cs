@@ -105,6 +105,7 @@ public class InvoiceEmissionWorker(
                         var apiClient = xmlBuilder.GetApiClient();
                         var submit = await apiClient.SubmitInvoiceAsync(xml, issuerCnpj.Value, request.IsTestMode, stoppingToken);
 
+                        var errorMsg = string.Join("; ", submit.Messages ?? []);
                         await results.UpsertByJobIdAsync(new InvoiceEmissionResult
                         {
                             JobId = job.Id,
@@ -114,17 +115,29 @@ public class InvoiceEmissionWorker(
                             NumeroDfe = submit.InvoiceNumber,
                             SerieDfe = request.Data.NfseSeries.ToString(),
                             CodStatus = submit.Success ? "SUCCESS" : "FAILED",
-                            StatusDescription = string.Join("; ", submit.Messages ?? []),
+                            StatusDescription = errorMsg,
                             Protocolo = submit.Protocol,
                             VerificationCode = submit.VerificationCode,
                             RequestXml = xml,
                             ResponseRaw = submit.RawResponse,
                             ChaveAcesso = submit.ChaveAcesso,
-                            ErrorMessage = submit.Success ? null : string.Join("; ", submit.Messages ?? []),
+                            ErrorMessage = submit.Success ? null : errorMsg,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         }, stoppingToken);
-                        await jobs.MarkSucceededAsync(job.Id, stoppingToken);
+
+                        if (submit.Success)
+                        {
+                            await jobs.MarkSucceededAsync(job.Id, stoppingToken);
+                        }
+                        else
+                        {
+                            var isPermanentRejection = job.Attempts >= job.MaxAttempts;
+                            DateTime? retryAt = isPermanentRejection
+                                ? null
+                                : DateTime.UtcNow.AddSeconds(Math.Pow(2, Math.Max(1, job.Attempts)) * 15);
+                            await jobs.MarkFailedAsync(job.Id, errorMsg, permanent: isPermanentRejection, retryAt, stoppingToken);
+                        }
 
                         logger.LogInformation(
                             "Processed invoice emission job {JobId}. Success={Success}",
@@ -166,8 +179,10 @@ public class InvoiceEmissionWorker(
         }
     }
 
-    private static string ResolvePortalType(object builder) =>
-        builder.GetType().Name.Contains("National", StringComparison.OrdinalIgnoreCase)
-            ? "Nacional"
-            : "Ipm";
+    private static string ResolvePortalType(IInvoiceXmlBuilder builder) =>
+        builder.GetPortalType() switch
+        {
+            PortalType.Nacional => "Nacional",
+            _ => "Ipm"
+        };
 }

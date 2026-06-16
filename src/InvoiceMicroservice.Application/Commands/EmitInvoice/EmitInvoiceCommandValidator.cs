@@ -45,7 +45,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 
             RuleFor(x => x.IssuedAt)
                 .NotEmpty()
-                .LessThanOrEqualTo(DateTime.UtcNow).WithMessage("IssuedAt cannot be in the future.");
+                .LessThanOrEqualTo(_ => DateTime.UtcNow).WithMessage("IssuedAt cannot be in the future.");
 
             RuleFor(x => x.ServiceTypeKey).MaximumLength(100).When(x => x.ServiceTypeKey != null);
 

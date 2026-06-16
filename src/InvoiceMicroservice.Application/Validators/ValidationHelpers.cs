@@ -70,15 +70,13 @@ public static class ValidationHelpers
     public static string OnlyDigits(string input) =>
         new([.. input.Where(char.IsDigit)]);
 
-    public static bool IsValidUf(string uf)
-    {
-        var validUfs = new HashSet<string>
-        {
-            "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO",
-            "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE",
-            "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP",
-            "SE", "TO"
-        };
-        return validUfs.Contains(uf.ToUpper());
-    }
+    private static readonly HashSet<string> ValidUfs =
+    [
+        "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO",
+        "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE",
+        "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP",
+        "SE", "TO"
+    ];
+
+    public static bool IsValidUf(string uf) => ValidUfs.Contains(uf.ToUpper());
 }

@@ -5,6 +5,7 @@ using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace InvoiceMicroservice.Api.Controllers;
@@ -38,7 +39,7 @@ public class ApiClientsController : ControllerBase
         if (!ValidateAdminKey())
             return Unauthorized();
 
-        if (_db.ApiClients.Any(c => c.ClientId == request.ClientId))
+        if (await _db.ApiClients.AnyAsync(c => c.ClientId == request.ClientId, ct))
             return BadRequest(new { error = $"Client '{request.ClientId}' already exists." });
 
         var rawApiKey = GenerateSecret("plv_");

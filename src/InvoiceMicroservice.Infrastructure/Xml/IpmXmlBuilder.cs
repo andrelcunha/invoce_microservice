@@ -55,9 +55,6 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         if (consumer.Address is null)
             throw new InvalidOperationException("IpmXmlBuilder: consumer.Address is null.");
 
-        if (string.IsNullOrWhiteSpace(invoice.ServiceTypeKey))
-            throw new InvalidOperationException("IpmXmlBuilder: invoice.ServiceTypeKey is null/empty.");
-
         // var serviceType = await _serviceTypeTaxMappingRepository
         //     .GetByServiceTypeKeyAsync(invoice.ServiceTypeKey, cancellationToken);
 
@@ -160,7 +157,7 @@ public class IpmXmlBuilder : IInvoiceXmlBuilder
         var pisCofinsCst = Helpers.NormalizePisCofinsCst(invoice.PisCofinsCts);
 
         // CST code - should be configurable per issuer
-        pisCofins.Add(new XElement("cst", pisCofinsCst ?? "1"));
+        pisCofins.Add(new XElement("cst", pisCofinsCst ?? "01"));
 
         // tipo_retencao omitted: IPM deprecated this field; retention is now inferred from
         // the presence/absence of valor_pis/valor_cofins in <nf>. (IPM-4)
