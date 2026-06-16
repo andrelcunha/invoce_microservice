@@ -1,0 +1,12 @@
+**/.vs
+**/.vscode
+**/.git
+**/bin
+**/obj
+**/TestResults
+tests/
+postgres/
+docs/
+tools/
+*.md
+*.sln.DotSettings
