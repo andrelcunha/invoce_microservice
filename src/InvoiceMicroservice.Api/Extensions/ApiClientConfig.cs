@@ -7,8 +7,6 @@ namespace InvoiceMicroservice.Api.Extensions;
 
 public static class ApiClientConfig
 {
-    public const string SectionName = "IpmClient";
-
     public static IServiceCollection AddApiClientConfiguration(
         this IServiceCollection services,
         IConfiguration configuration)
