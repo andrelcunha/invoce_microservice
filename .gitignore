@@ -488,3 +488,4 @@ $RECYCLE.BIN/
 .github/copilot-instructions.md
 
 src/InvoiceMicroservice.Api/national-xml-output/*
+seed-production.sql
