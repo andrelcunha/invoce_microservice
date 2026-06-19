@@ -1,11 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using FluentValidation;
 using InvoiceMicroservice.Api.Models;
 using InvoiceMicroservice.Application.Commands.PortalCredentials;
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
-using InvoiceMicroservice.Domain.ValueObjects;
 using Microsoft.AspNetCore.Mvc;
 
 namespace InvoiceMicroservice.Api.Controllers;
@@ -45,7 +42,7 @@ public class PortalCredentialsController : ControllerBase
         CancellationToken ct = default)
     {
         var credentials = await _repository.GetAllAsync(includeInactive, ct);
-        
+
         var result = credentials.Select(c => new
         {
             c.Id,
@@ -224,7 +221,7 @@ public class PortalCredentialsController : ControllerBase
 
         // Hash password if provided, otherwise keep existing
         var passwordHash = !string.IsNullOrWhiteSpace(dto.Password)
-            ? HashPassword(dto.Password)
+            ? dto.Password
             : credentials.PasswordHash;
 
         // Process certificate if provided, otherwise keep existing
@@ -235,7 +232,7 @@ public class PortalCredentialsController : ControllerBase
         {
             certificateData = Convert.FromBase64String(dto.CertificateBase64);
             certificatePasswordHash = !string.IsNullOrWhiteSpace(dto.CertificatePassword)
-                ? HashPassword(dto.CertificatePassword)
+                ? dto.CertificatePassword
                 : certificatePasswordHash;
         }
 
@@ -280,14 +277,5 @@ public class PortalCredentialsController : ControllerBase
         await _repository.DeleteAsync(id, ct);
 
         return NoContent();
-    }
-
-    private static string HashPassword(string password)
-    {
-        // // Using SHA256 for simplicity - in production, use BCrypt or Argon2
-        // using var sha256 = SHA256.Create();
-        // var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-        // return Convert.ToBase64String(bytes);
-        return password;
     }
 }
