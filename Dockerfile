@@ -5,16 +5,15 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy project files first so restore layer is cached
-COPY InvoiceMicroservice.sln .
 COPY src/InvoiceMicroservice.Api/InvoiceMicroservice.Api.csproj                          src/InvoiceMicroservice.Api/
 COPY src/InvoiceMicroservice.Application/InvoiceMicroservice.Application.csproj          src/InvoiceMicroservice.Application/
 COPY src/InvoiceMicroservice.Domain/InvoiceMicroservice.Domain.csproj                    src/InvoiceMicroservice.Domain/
 COPY src/InvoiceMicroservice.Infrastructure/InvoiceMicroservice.Infrastructure.csproj    src/InvoiceMicroservice.Infrastructure/
-RUN dotnet restore
+# RUN dotnet restore src/InvoiceMicroservice.Api/InvoiceMicroservice.Api.csproj
 
 COPY src/ src/
 RUN dotnet publish src/InvoiceMicroservice.Api/InvoiceMicroservice.Api.csproj \
-    -c Release -o /app/publish --no-restore
+    -c Release -o /app/publish
 
 # Build self-contained EF migrations bundle
 RUN dotnet tool install --global dotnet-ef
@@ -30,6 +29,9 @@ RUN dotnet ef migrations bundle \
 # Stage 2 – runtime image
 # ──────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 COPY --from=build /app/publish .
