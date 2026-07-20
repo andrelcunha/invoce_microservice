@@ -1,3 +1,5 @@
+> ⚠️ **Outdated.** This is the original Node.js → .NET migration planning document. The implementation diverged from it in several major ways: the request contract uses a flat `issuerCnpj` string (not a nested `issuer` object), the single `invoices` table was dropped in favor of `issuers` / `portal_credentials` / `invoice_emission_jobs` / `invoice_emission_results`, and RabbitMQ was never built. For the current design, read `docs/DESIGN.md`, `docs/SPECS.md`, `docs/TASKS.md`, and `docs/passoulavou-invoice-integration-guide.md`. For a production deploy runbook, see `../INVOICE_INTEGRATION_DEPLOY_GUIDE.md` in the umbrella repo. Kept here for historical context only.
+
 # Invoice Microservice - .NET Migration Guide (Updated)
 
 ## 📋 Executive Summary
