@@ -1,8 +1,8 @@
 **/.vs
 **/.vscode
 **/.git
-**/bin
-**/obj
+**/bin*
+**/obj*
 **/TestResults
 tests/
 postgres/
