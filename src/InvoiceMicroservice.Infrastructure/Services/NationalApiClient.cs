@@ -187,7 +187,8 @@ public class NationalApiClient : IApiClient
                 Success = true,
                 Protocol = null, // Parse protocol from responseContent if available
                 RawResponse = responseContent,
-                ChaveAcesso = submissionResponse.ChaveAcesso
+                ChaveAcesso = submissionResponse.ChaveAcesso,
+                PdfUrl = BuildConsultaPublicaUrl(baseUrl, submissionResponse.ChaveAcesso),
             };
 
             return result;
@@ -202,6 +203,22 @@ public class NationalApiClient : IApiClient
             _logger.LogError(ex, "Timeout submitting DPS to National API");
             throw new TimeoutException("Request to National API timed out", ex);
         }
+    }
+
+    /// <summary>
+    /// The submission API (SEFIN) never returns a document link — only the signed XML and a
+    /// chaveAcesso. The DANFSe itself lives on the separate public consultation portal
+    /// ("NFS-e Via"), which anyone (including the end customer) can use to view/download it,
+    /// no login required: https://www.gov.br/nfse/pt-br/nfs-e-via/links
+    /// Mirrors whichever environment the submission's own ApiBaseUrl points at (homologação
+    /// vs produção), rather than trusting isTestMode alone, so the link always matches where
+    /// the invoice was actually sent.
+    /// </summary>
+    private static string BuildConsultaPublicaUrl(string apiBaseUrl, string chaveAcesso)
+    {
+        var isHomologacao = apiBaseUrl.Contains("producaorestrita", StringComparison.OrdinalIgnoreCase);
+        var host = isHomologacao ? "producaorestrita.via.nfse.gov.br" : "via.nfse.gov.br";
+        return $"https://{host}/consultapublica/{chaveAcesso}";
     }
 
     public static string GZipAndBase64Encode(string xml)
