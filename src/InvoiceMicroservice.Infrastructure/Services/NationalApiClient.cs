@@ -204,7 +204,7 @@ public class NationalApiClient : IApiClient
                 Protocol = null, // Parse protocol from responseContent if available
                 RawResponse = responseContent,
                 ChaveAcesso = submissionResponse.ChaveAcesso,
-                PdfUrl = BuildConsultaPublicaUrl(baseUrl, submissionResponse.ChaveAcesso),
+                PdfUrl = BuildConsultaPublicaUrl(baseUrl),
             };
 
             return result;
@@ -223,18 +223,26 @@ public class NationalApiClient : IApiClient
 
     /// <summary>
     /// The submission API (SEFIN) never returns a document link — only the signed XML and a
-    /// chaveAcesso. The DANFSe itself lives on the separate public consultation portal
-    /// ("NFS-e Via"), which anyone (including the end customer) can use to view/download it,
-    /// no login required: https://www.gov.br/nfse/pt-br/nfs-e-via/links
-    /// Mirrors whichever environment the submission's own ApiBaseUrl points at (homologação
-    /// vs produção), rather than trusting isTestMode alone, so the link always matches where
-    /// the invoice was actually sent.
+    /// chaveAcesso. The DANFSe lives on the general NFS-e Nacional public consultation portal,
+    /// which anyone (including the end customer) can use to look it up by chave de acesso, no
+    /// login required: https://www.gov.br/nfse/pt-br/nfs-e-via/links
+    ///
+    /// NOT "NFS-e Via" (via.nfse.gov.br) — that's a separate portal specifically for
+    /// concessionárias de pedágio (toll road operators), confirmed via the same gov.br page.
+    /// A car-wash invoice submitted here never shows up there, even with the correct chave.
+    ///
+    /// There's no confirmed direct deep-link format that embeds the chave in the URL (the
+    /// portal's search is a client-side form; the encrypted "?chave=" links you see after
+    /// searching are generated server-side, not something we can construct ourselves) — this
+    /// links to the search page itself. Mirrors whichever environment the submission's own
+    /// ApiBaseUrl points at (homologação vs produção), rather than trusting isTestMode alone,
+    /// so the link always matches where the invoice was actually sent.
     /// </summary>
-    private static string BuildConsultaPublicaUrl(string apiBaseUrl, string chaveAcesso)
+    private static string BuildConsultaPublicaUrl(string apiBaseUrl)
     {
         var isHomologacao = apiBaseUrl.Contains("producaorestrita", StringComparison.OrdinalIgnoreCase);
-        var host = isHomologacao ? "producaorestrita.via.nfse.gov.br" : "via.nfse.gov.br";
-        return $"https://{host}/consultapublica/{chaveAcesso}";
+        var host = isHomologacao ? "www.producaorestrita.nfse.gov.br" : "www.nfse.gov.br";
+        return $"https://{host}/consultapublica";
     }
 
     public static string GZipAndBase64Encode(string xml)
