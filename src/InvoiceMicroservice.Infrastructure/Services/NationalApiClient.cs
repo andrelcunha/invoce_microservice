@@ -17,6 +17,8 @@ namespace InvoiceMicroservice.Infrastructure.Services;
 /// </summary>
 public class NationalApiClient : IApiClient
 {
+    private static readonly JsonSerializerOptions CaseInsensitiveJson = new() { PropertyNameCaseInsensitive = true };
+
     private readonly ILogger<NationalApiClient> _logger;
     private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly PortalConfigs _portalConfigs;
@@ -130,12 +132,13 @@ public class NationalApiClient : IApiClient
                     {
                         var errorResponse = JsonSerializer.Deserialize<NationalNfseErrorResponse>(
                             responseContent,
-                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                        if (errorResponse != null && errorResponse.Erros.Count > 0)
+                            CaseInsensitiveJson);
+                        var formattedErrors = errorResponse?.Erros.Select(e => $"{e.Codigo}: {e.Descricao}").ToList() ?? new List<string>();
+                        if (formattedErrors.Count > 0)
                         {
                             _logger.LogWarning(
                                 "National API returned errors: {Errors}",
-                                string.Join(", ", errorResponse.Erros.Select(e => $"{e.Codigo}: {e.Descricao}")));
+                                string.Join(", ", formattedErrors));
                         }
                         else
                         {
@@ -148,7 +151,7 @@ public class NationalApiClient : IApiClient
                         {
                             Success = false,
                             Protocol = null,
-                            Messages = errorResponse?.Erros.Select(e => $"{e.Codigo}: {e.Descricao}").ToList() ?? new List<string>(),
+                            Messages = formattedErrors,
                             RawResponse = responseContent,
                         };
                     }
@@ -170,10 +173,7 @@ public class NationalApiClient : IApiClient
                 "DPS submitted successfully - Response: {Response}",
                 responseContent);
 
-            var submissionResponse = JsonSerializer.Deserialize<NationalNfseSuccessResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var submissionResponse = JsonSerializer.Deserialize<NationalNfseSuccessResponse>(responseContent, CaseInsensitiveJson);
             if (submissionResponse == null)
             {
                 _logger.LogError("Failed to deserialize National API response: {Response}", responseContent);
@@ -204,7 +204,7 @@ public class NationalApiClient : IApiClient
                 Protocol = null, // Parse protocol from responseContent if available
                 RawResponse = responseContent,
                 ChaveAcesso = submissionResponse.ChaveAcesso,
-                PdfUrl = BuildConsultaPublicaUrl(baseUrl),
+                PdfUrl = BuildConsultaPublicaUrl(isTestMode),
             };
 
             return result;
@@ -234,14 +234,12 @@ public class NationalApiClient : IApiClient
     /// There's no confirmed direct deep-link format that embeds the chave in the URL (the
     /// portal's search is a client-side form; the encrypted "?chave=" links you see after
     /// searching are generated server-side, not something we can construct ourselves) — this
-    /// links to the search page itself. Mirrors whichever environment the submission's own
-    /// ApiBaseUrl points at (homologação vs produção), rather than trusting isTestMode alone,
-    /// so the link always matches where the invoice was actually sent.
+    /// links to the search page itself. Takes the same isTestMode flag that already resolved
+    /// which host the submission itself went to, so the two can never disagree.
     /// </summary>
-    private static string BuildConsultaPublicaUrl(string apiBaseUrl)
+    private static string BuildConsultaPublicaUrl(bool isTestMode)
     {
-        var isHomologacao = apiBaseUrl.Contains("producaorestrita", StringComparison.OrdinalIgnoreCase);
-        var host = isHomologacao ? "www.producaorestrita.nfse.gov.br" : "www.nfse.gov.br";
+        var host = isTestMode ? "www.producaorestrita.nfse.gov.br" : "www.nfse.gov.br";
         return $"https://{host}/consultapublica";
     }
 
