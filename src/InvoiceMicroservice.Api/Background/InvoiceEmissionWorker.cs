@@ -118,6 +118,7 @@ public class InvoiceEmissionWorker(
                             StatusDescription = errorMsg,
                             Protocolo = submit.Protocol,
                             VerificationCode = submit.VerificationCode,
+                            DocumentUrl = submit.PdfUrl,
                             RequestXml = xml,
                             ResponseRaw = submit.RawResponse,
                             ChaveAcesso = submit.ChaveAcesso,
