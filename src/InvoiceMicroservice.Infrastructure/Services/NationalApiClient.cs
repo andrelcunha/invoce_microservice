@@ -69,7 +69,14 @@ public class NationalApiClient : IApiClient
         if (config == null)
             throw new InvalidOperationException($"No portal configuration found for portal type {credentials.PortalType}");
 
-        var baseUrl = config.ApiBaseUrl;
+        // isTestMode is the single source of truth for which environment we talk to:
+        // it already drives tpAmb (Homologação/Produção) in the DPS XML and the
+        // certificate-validation leniency above, so the host must follow the same
+        // flag or the two can silently disagree (as happened before this existed —
+        // tpAmb=Produção sent to the homologação host, rejected with error E0006).
+        var baseUrl = !isTestMode && !string.IsNullOrWhiteSpace(config.ApiBaseUrlProducao)
+            ? config.ApiBaseUrlProducao
+            : config.ApiBaseUrl;
 
         using var httpClient = new HttpClient(handler)
         {
@@ -121,12 +128,21 @@ public class NationalApiClient : IApiClient
                 {
                     try
                     {
-                        var errorResponse = JsonSerializer.Deserialize<NationalNfseErrorResponse>(responseContent);
+                        var errorResponse = JsonSerializer.Deserialize<NationalNfseErrorResponse>(
+                            responseContent,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                         if (errorResponse != null && errorResponse.Erros.Count > 0)
                         {
                             _logger.LogWarning(
                                 "National API returned errors: {Errors}",
-                                string.Join(", ", errorResponse.Erros));
+                                string.Join(", ", errorResponse.Erros.Select(e => $"{e.Codigo}: {e.Descricao}")));
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "National API returned {StatusCode} with an unparsed error body: {Response}",
+                                response.StatusCode,
+                                responseContent);
                         }
                         return new NfseSubmissionResult
                         {
