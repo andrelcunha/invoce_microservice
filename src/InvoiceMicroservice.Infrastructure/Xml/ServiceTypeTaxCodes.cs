@@ -9,7 +9,8 @@ internal record ServiceTypeTaxCodes
     public string ServiceListCode { get; init; }
     public string OperationIndicator { get; init; }
     public string TaxSituationCode { get; init; }
-    public string TaxClassificationCode { get; init; }
+    // public string TaxClassificationCode { get; init; }
+    public string Description { get; init; } 
 
     public ServiceTypeTaxCodes(ServiceTypeTaxMapping mapping)
     {
@@ -17,7 +18,8 @@ internal record ServiceTypeTaxCodes
         ServiceListCode = mapping.ServiceListCode;
         OperationIndicator = mapping.OperationIndicator;
         TaxSituationCode = mapping.TaxSituationCode;
-        TaxClassificationCode = mapping.TaxClassificationCode;
+        // TaxClassificationCode = mapping.TaxClassificationCode;
+        Description = mapping.Description;
     }
 
     private ServiceTypeTaxCodes(
@@ -25,20 +27,22 @@ internal record ServiceTypeTaxCodes
         string serviceListCode,
         string operationIndicator,
         string taxSituationCode,
-        string taxClassificationCode)
+        // string taxClassificationCode, 
+        string description)
     {
         NbsCode = nbsCode;
         ServiceListCode = serviceListCode;
         OperationIndicator = operationIndicator;
         TaxSituationCode = taxSituationCode;
-        TaxClassificationCode = taxClassificationCode;
+        // TaxClassificationCode = taxClassificationCode;
+        Description = description;
     }
 
     public static ServiceTypeTaxCodes Default() => new(
-        "123456789",
-        "0024",
-        "030102",
-        "200",
-        "200028"
-    );
+        "118032900",
+        "140101",
+        "050101",
+        "000",
+        // "000001",
+        "Lubrificação, limpeza, lustração, revisão, carga e recarga, conserto, restauração, blindagem, manutenção e conservação de máquinas, veículos, aparelhos, equipamentos, motores, elevadores ou de qualquer objeto (exceto peças e partes empregadas, que ficam sujeitas ao ICMS)." );
 }

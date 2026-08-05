@@ -22,41 +22,140 @@ namespace InvoiceMicroservice.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.Invoice", b =>
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.ApiClient", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
+                        .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(10,2)");
+                    b.Property<string>("ApiKeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("api_key_hash");
 
                     b.Property<string>("ClientId")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("ConsumerData")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("client_id");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
                         .HasDefaultValueSql("now() at time zone 'utc'");
 
-                    b.Property<string>("ErrorDetails")
-                        .HasColumnType("jsonb");
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
 
-                    b.Property<string>("ExternalInvoiceId")
+                    b.Property<string>("WebhookSecret")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("webhook_secret");
+
+                    b.Property<string>("WebhookUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("webhook_url");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApiKeyHash")
+                        .IsUnique();
+
+                    b.HasIndex("ClientId")
+                        .IsUnique();
+
+                    b.ToTable("api_clients", (string)null);
+                });
+
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.InvoiceEmissionJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IssuerCnpj")
+                        .IsRequired()
+                        .HasMaxLength(14)
+                        .HasColumnType("character varying(14)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime?>("LockedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("ExternalResponse")
-                        .HasColumnType("jsonb");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
-                    b.Property<decimal>("IssRate")
-                        .HasColumnType("numeric");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssuerCnpj");
+
+                    b.HasIndex("Status", "NextRetryAt", "CreatedAt");
+
+                    b.ToTable("invoice_emission_jobs", (string)null);
+                });
+
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.InvoiceEmissionResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AlertsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ChaveAcesso")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("CodStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("IssuedAt")
                         .HasColumnType("timestamp with time zone");
@@ -66,45 +165,132 @@ namespace InvoiceMicroservice.Infrastructure.Migrations
                         .HasMaxLength(14)
                         .HasColumnType("character varying(14)");
 
-                    b.Property<string>("IssuerData")
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NumeroDfe")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PortalType")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
-                    b.Property<int>("RetryCount")
-                        .HasColumnType("integer");
+                    b.Property<string>("Protocolo")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
-                    b.Property<string>("ServiceDescription")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ServiceTypeKey")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime?>("ProviderProcessedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("XMLResponse")
+                    b.Property<string>("RequestXml")
                         .HasColumnType("text");
 
-                    b.Property<string>("XmlPayload")
+                    b.Property<string>("ResponseRaw")
                         .HasColumnType("text");
+
+                    b.Property<string>("SerieDfe")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("StatusDescription")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VerificationCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClientId");
-
-                    b.HasIndex("ExternalInvoiceId");
+                    b.HasIndex("ChaveAcesso");
 
                     b.HasIndex("IssuerCnpj");
 
-                    b.HasIndex("Status", "CreatedAt");
+                    b.HasIndex("JobId")
+                        .IsUnique();
 
-                    b.ToTable("Invoices");
+                    b.ToTable("invoice_emission_results", (string)null);
+                });
+
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.IssuerEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("AddressJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("address");
+
+                    b.Property<string>("Cnae")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("cnae");
+
+                    b.Property<string>("Cnpj")
+                        .IsRequired()
+                        .HasMaxLength(14)
+                        .HasColumnType("character varying(14)")
+                        .HasColumnName("cnpj");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LegalName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("legal_name");
+
+                    b.Property<string>("MunicipalInscription")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("municipal_inscription");
+
+                    b.Property<int>("RegimeTributario")
+                        .HasColumnType("integer")
+                        .HasColumnName("regime_tributario");
+
+                    b.Property<int>("SubRegimeTributario")
+                        .HasColumnType("integer")
+                        .HasColumnName("sub_regime_tributario");
+
+                    b.Property<string>("TradeName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("trade_name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Cnpj")
+                        .IsUnique();
+
+                    b.ToTable("issuers", (string)null);
                 });
 
             modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.Municipality", b =>
@@ -120,11 +306,6 @@ namespace InvoiceMicroservice.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("created_at");
-
-                    b.Property<string>("ExtinguishedAt")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("extinguished_at");
 
                     b.Property<string>("IbgeCode")
                         .IsRequired()
@@ -162,6 +343,77 @@ namespace InvoiceMicroservice.Infrastructure.Migrations
                     b.HasIndex("Name", "Uf");
 
                     b.ToTable("municipalities", (string)null);
+                });
+
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.PortalCredentialsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<byte[]>("CertificateData")
+                        .HasColumnType("bytea")
+                        .HasColumnName("certificate_data");
+
+                    b.Property<string>("CertificatePasswordHash")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("certificate_password_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("IssuerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issuer_id");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("password_hash");
+
+                    b.Property<int>("PortalType")
+                        .HasColumnType("integer")
+                        .HasColumnName("portal_type");
+
+                    b.Property<bool>("RequiresSignature")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("requires_signature");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("username");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssuerId")
+                        .IsUnique();
+
+                    b.HasIndex("IssuerId", "PortalType", "IsActive");
+
+                    b.ToTable("portal_credentials", (string)null);
                 });
 
             modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.ServiceTypeTaxMapping", b =>
@@ -247,6 +499,34 @@ namespace InvoiceMicroservice.Infrastructure.Migrations
                     b.HasIndex("IsActive", "ServiceTypeKey");
 
                     b.ToTable("service_type_tax_mappings", (string)null);
+                });
+
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.InvoiceEmissionResult", b =>
+                {
+                    b.HasOne("InvoiceMicroservice.Domain.Entities.InvoiceEmissionJob", "Job")
+                        .WithOne()
+                        .HasForeignKey("InvoiceMicroservice.Domain.Entities.InvoiceEmissionResult", "JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.PortalCredentialsEntity", b =>
+                {
+                    b.HasOne("InvoiceMicroservice.Domain.Entities.IssuerEntity", "Issuer")
+                        .WithOne("PortalCredentials")
+                        .HasForeignKey("InvoiceMicroservice.Domain.Entities.PortalCredentialsEntity", "IssuerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issuer");
+                });
+
+            modelBuilder.Entity("InvoiceMicroservice.Domain.Entities.IssuerEntity", b =>
+                {
+                    b.Navigation("PortalCredentials")
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

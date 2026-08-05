@@ -1,7 +1,7 @@
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
 using InvoiceMicroservice.Domain.ValueObjects;
-using InvoiceMicroservice.Infrastructure.Xml;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
@@ -9,96 +9,93 @@ namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
 public record EmitInvoiceCommand
 {
     public required string ClientId { get; init; }
+    public required string IssuerCnpj { get; init; }
     public required EmitInvoiceData Data { get; init; }
     public bool IsTestMode { get; init; } = true; // Default to test mode for safety
 }
 
 public record EmitInvoiceData
 {
-    public required Issuer Issuer { get; init; }
+    public required int NfseSeries { get; init; }
+    public required int NfseNumber { get; init; }
     public required Consumer Consumer { get; init; }
     public required string ServiceDescription { get; init; }
     public required decimal Amount { get; init; }
     public DateTime IssuedAt { get; init; }
     public string? ServiceTypeKey { get; init; }
-    
-    /// <summary>
-    /// ISS rate (Imposto Sobre Serviços) as percentage.
-    /// Example: 5% = 0.05. Range: 2% to 5% depending on municipality and service.
-    /// This is the CURRENT tax (separate from IBS/CBS which start in 2026).
-    /// </summary>
+    public string? MunicipalTaxCode { get; init; }
     public decimal IssRate { get; init; }
+    public int? PisCofinsCts { get; init; }
+    public decimal AliquotaPis { get; init; }
+    public decimal AliquotaCofins { get; init; }
+    public string TipoRetencaoPisCofins { get; init; } = null!;
+    public string IbsCbsClassTrib { get; init; } = null!;
+    public string IbsCbsCst { get; init; } = null!;
+}
+
+public record EmitInvoiceJobPayload
+{
+    public int SchemaVersion { get; init; } = 1;
+    public DateTime EnqueuedAtUtc { get; init; } = DateTime.UtcNow;
+    public required EmitInvoiceCommand Command { get; init; }
 }
 
 public class EmitInvoiceCommandHandler
 {
-    private readonly IInvoiceRepository _repository;
-    private readonly IIpmXmlBuilder _xmlBuilder;
-    private readonly IIpmClient _ipmClient;
+    private readonly IIssuerRepository _issuerRepository;
+    private readonly IInvoiceEmissionJobRepository _jobRepository;
+    private readonly ILogger<EmitInvoiceCommandHandler> _logger;
 
     public EmitInvoiceCommandHandler(
-        IInvoiceRepository repository, 
-        IIpmXmlBuilder xmlBuilder,
-        IIpmClient ipmClient)
+            IIssuerRepository issuerRepository,
+            IInvoiceEmissionJobRepository jobRepository,
+            ILogger<EmitInvoiceCommandHandler> logger)
     {
-        _repository = repository;
-        _xmlBuilder = xmlBuilder;
-        _ipmClient = ipmClient;
+        _issuerRepository = issuerRepository;
+        _jobRepository = jobRepository;
+        _logger = logger;
     }
 
     public async Task<Guid> HandleAsync(EmitInvoiceCommand request, CancellationToken cancellationToken = default)
     {
-        var issuerCnpj = new Cnpj(request.Data.Issuer.Cnpj);
-        
-        var issuerJson = JsonSerializer.Serialize(request.Data.Issuer);
-        var consumerJson = JsonSerializer.Serialize(request.Data.Consumer);
+        var issuerCnpj = new Cnpj(request.IssuerCnpj);
 
-        var invoice = Invoice.Create(
-            request.ClientId,
-            issuerCnpj,
-            issuerJson,
-            consumerJson,
-            request.Data.ServiceDescription,
-            request.Data.Amount,
-            request.Data.IssuedAt,
-            request.Data.IssRate,
-            request.Data.ServiceTypeKey
-        );
+        // Keep lightweight preconditions in API path
+        var issuer = await _issuerRepository.GetByCnpjAsync(issuerCnpj, cancellationToken)
+            ?? throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} not found.");
 
-        await _repository.AddAsync(invoice, cancellationToken);
+        if (!issuer.IsActive)
+            throw new InvalidOperationException($"Issuer with CNPJ {issuerCnpj.Value} is inactive.");
 
-        // Generate XML
-        var xml = await _xmlBuilder.BuildInvoiceXmlAsync(
-            invoice, 
-            isTestMode: request.IsTestMode, 
-            cancellationToken);
-        
-        // Store generated XML
-        invoice.XmlPayload = xml;
-        
-        // Submit to IPM (File or API depending on configuration)
-        var result = await _ipmClient.SubmitInvoiceAsync(
-            xml, 
-            isTestMode: request.IsTestMode, 
-            cancellationToken);
-        
-        // Update invoice with submission result
-        if (result.Success)
+        var payload = new EmitInvoiceJobPayload
         {
-            invoice.MarkAsEmitted(
-                result.InvoiceNumber ?? "",
-                result.Protocol ?? "",
-                result.VerificationCode ?? "",
-                result.RawResponse ?? xml
-            );
-        }
-        else
-        {
-            invoice.MarkAsFailed(string.Join("; ", result.Messages));
-        }
-        
-        await _repository.UpdateAsync(invoice, cancellationToken);
+            Command = request
+        };
 
-        return invoice.Id;
+        var payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        var job = new InvoiceEmissionJob
+        {
+            Id = Guid.NewGuid(),
+            IssuerCnpj = issuerCnpj.Value,
+            PayloadJson = payloadJson,
+            Status = InvoiceEmissionJobStatus.Pending,
+            Attempts = 0,
+            NextRetryAt = null,
+            LastError = null,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        await _jobRepository.AddAsync(job, cancellationToken);
+
+        _logger.LogInformation(
+            "Invoice emission job enqueued. JobId={JobId}, IssuerCnpj={IssuerCnpj}, ClientId={ClientId}",
+            job.Id, issuerCnpj.Value, request.ClientId);
+
+        return job.Id;
     }
 }

@@ -1,31 +1,37 @@
 using System.Data;
 using FluentValidation;
 using InvoiceMicroservice.Domain.Entities;
+using InvoiceMicroservice.Application.Validators;
 
 namespace InvoiceMicroservice.Application.Commands.EmitInvoice;
 
 public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 {
-    private static readonly HashSet<string> ValidUfs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-        "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-        "RS", "RO", "RR", "SC", "SP", "SE", "TO"
-    };
 
-    public  EmitInvoiceCommandValidator()
+    public EmitInvoiceCommandValidator()
     {
         RuleFor(x => x.ClientId)
             .NotEmpty().WithMessage("ClientId is required.");
 
-            RuleFor(x => x.Data).SetValidator(new EmitInvoiceDataValidator());
+        RuleFor(x => x.IssuerCnpj)
+            .NotEmpty().WithMessage("IssuerCnpj is required.")
+            .Must(ValidationHelpers.BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
+
+        RuleFor(x => x.Data).SetValidator(new EmitInvoiceDataValidator());
     }
 
     internal class EmitInvoiceDataValidator : AbstractValidator<EmitInvoiceData>
     {
         public EmitInvoiceDataValidator()
         {
-            RuleFor(x => x.Issuer).SetValidator(new IssuerValidator());
+            RuleFor(x => x.NfseSeries)
+                .GreaterThan(0).WithMessage("NfseSeries must be greater than zero.")
+                .LessThan(10000).WithMessage("NfseSeries must be less than 10000.");
+
+            RuleFor(x => x.NfseNumber)
+                .GreaterThan(0).WithMessage("NfseNumber must be greater than zero.")
+                .LessThan(1000000).WithMessage("NfseNumber must be less than 1000000.");
+
             RuleFor(x => x.Consumer).SetValidator(new ConsumerValidator());
 
             RuleFor(x => x.ServiceDescription)
@@ -39,27 +45,45 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 
             RuleFor(x => x.IssuedAt)
                 .NotEmpty()
-                .LessThanOrEqualTo(DateTime.UtcNow).WithMessage("IssuedAt cannot be in the future.");
+                .LessThanOrEqualTo(_ => DateTime.UtcNow).WithMessage("IssuedAt cannot be in the future.");
 
             RuleFor(x => x.ServiceTypeKey).MaximumLength(100).When(x => x.ServiceTypeKey != null);
-        
+
+            RuleFor(x => x.PisCofinsCts)
+                .Must(BeValidPisCofinsCst)
+                .When(x => x.PisCofinsCts.HasValue)
+                .WithMessage("PisCofinsCts must be one of: 1-9, 49-56, 60-67, 70-75, 98, 99.");
+
             // ISS rate validation: Brazilian municipalities can charge 2% to 5%
             RuleFor(x => x.IssRate)
                 .InclusiveBetween(0.02m, 0.05m)
                 .WithMessage("ISS rate must be between 2% (0.02) and 5% (0.05)");
         }
+
+        private static bool BeValidPisCofinsCst(int? value)
+        {
+            if (!value.HasValue)
+                return true;
+
+            return value.Value is >= 1 and <= 9
+                or >= 49 and <= 56
+                or >= 60 and <= 67
+                or >= 70 and <= 75
+                or 98
+                or 99;
+        }
     }
 
-    internal class IssuerValidator : AbstractValidator<Issuer>
+    internal class IssuerValidator : AbstractValidator<IssuerDto>
     {
         public IssuerValidator()
         {
             RuleFor(x => x.Cnpj)
                 .NotEmpty()
-                .Must(BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
+                .Must(ValidationHelpers.BeValidCnpj).WithMessage("Invalid CNPJ format or check digits.");
 
             RuleFor(x => x.MunicipalInscription)
-                .NotEmpty().MaximumLength(20);
+                .MaximumLength(20).When(x => x.MunicipalInscription != null);
 
             RuleFor(x => x.Name)
                 .NotEmpty()
@@ -83,11 +107,11 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
 
             RuleFor(x => x.CpfCnpj)
                 .NotEmpty()
-                .Must(BeValidCpfOrCnpj).WithMessage("Invalid CPF/CNPJ format or check digits.");
+                .Must(ValidationHelpers.BeValidCpfOrCnpj).WithMessage("Invalid CPF/CNPJ format or check digits.");
 
             When(x => !string.IsNullOrEmpty(x.Email), () =>
             {
-                RuleFor(x =>x.Email)
+                RuleFor(x => x.Email)
                     .EmailAddress()
                     .WithMessage("Invalid email format.");
             });
@@ -132,7 +156,7 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
             RuleFor(x => x.Uf)
                 .NotEmpty()
                 .MaximumLength(2)
-                .Must(uf => ValidUfs.Contains(uf))
+                .Must(uf => ValidationHelpers.IsValidUf(uf))
                 .WithMessage("Invalid Brazilian state (UF).");
 
             RuleFor(x => x.ZipCode)
@@ -141,69 +165,4 @@ public class EmitInvoiceCommandValidator : AbstractValidator<EmitInvoiceCommand>
                 .WithMessage("ZipCode must be 8 digits  (NNNNN-NNN or NNNNNNNN).");
         }
     }
-
-    private static bool BeValidCnpj(string cnpj)
-    {
-        var digits = OnlyDigits(cnpj);
-    if (digits.Length != 14) return false;
-
-    // CNPJ check digit calculation
-    int[] multipliers1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-    int[] multipliers2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-
-    var sum = 0;
-    for (int i = 0; i < 12; i++)
-        sum += (digits[i] - '0') * multipliers1[i];
-
-    var mod = sum % 11;
-    var digit1 = mod < 2 ? 0 : 11 - mod;
-
-    if (digits[12] - '0' != digit1) return false;
-
-    sum = 0;
-    for (int i = 0; i < 13; i++)
-        sum += (digits[i] - '0') * multipliers2[i];
-
-    mod = sum % 11;
-    var digit2 = mod < 2 ? 0 : 11 - mod;
-
-    return digits[13] - '0' == digit2;
-    }
-
-    private static bool BeValidCpfOrCnpj(string cpfOrCnpj)
-    {
-        var digits = OnlyDigits(cpfOrCnpj);
-        return digits.Length == 11 ? BeValidCpf(digits) :BeValidCnpj(digits);
-    }
-
-    private static bool BeValidCpf(string digits)
-    {
-        if (digits.Length != 11) return false;
-
-        // Reject known invalid patterns like 00000000000
-        if (new string(digits[0], 11) == digits) return false;
-
-        int[] multipliers1 = [10, 9, 8, 7, 6, 5, 4, 3, 2];
-        int[] multipliers2 = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
-
-        var sum = 0;
-        for (int i = 0; i < 9; i++)
-            sum += (digits[i] - '0') * multipliers1[i];
-
-        var mod = sum % 11;
-        var digit1 = mod < 2 ? 0 : 11 - mod;
-        if (digits[9] - '0' != digit1) return false;
-
-        sum = 0;
-        for (int i = 0; i < 10; i++)
-            sum += (digits[i] - '0') * multipliers2[i];
-
-        mod = sum % 11;
-        var digit2 = mod < 2 ? 0 : 11 - mod;
-
-        return digits[10] - '0' == digit2;
-    }
-
-    private static string OnlyDigits(string input) =>
-        new([.. input.Where(char.IsDigit)]);
 }

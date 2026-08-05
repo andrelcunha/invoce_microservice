@@ -26,17 +26,13 @@ public class Municipality
     /// TOM code for IPM NFS-e (e.g., 8083 for Concórdia-SC)
     /// </summary>
     public string TomCode { get; private set; } = null!;
+
     
     /// <summary>
     /// Date when municipality was officially created (ISO format)
     /// </summary>
     public string? CreatedAt { get; private set; }
     
-    /// <summary>
-    /// Date when municipality code was extinguished (ISO format), if applicable
-    /// </summary>
-    public string? ExtinguishedAt { get; private set; }
-
     // EF Core constructor
     private Municipality() { }
 
@@ -45,8 +41,7 @@ public class Municipality
         string name,
         string uf,
         string tomCode,
-        string? createdAt = null,
-        string? extinguishedAt = null)
+        string? createdAt = null)
     {
         return new Municipality
         {
@@ -55,7 +50,6 @@ public class Municipality
             Uf = uf,
             TomCode = tomCode,
             CreatedAt = createdAt,
-            ExtinguishedAt = extinguishedAt
         };
     }
 }
