@@ -22,16 +22,19 @@ public class NationalApiClient : IApiClient
     private readonly ILogger<NationalApiClient> _logger;
     private readonly IPortalCredentialsRepository _credentialsRepo;
     private readonly PortalConfigs _portalConfigs;
+    private readonly DiagnosticsConfig _diagnostics;
 
 
     public NationalApiClient(
         ILogger<NationalApiClient> logger,
         IPortalCredentialsRepository credentialsRepo,
-        IOptions<PortalConfigs> configs)
+        IOptions<PortalConfigs> configs,
+        IOptions<DiagnosticsConfig> diagnostics)
     {
         _logger = logger;
         _credentialsRepo = credentialsRepo;
         _portalConfigs = configs.Value;
+        _diagnostics = diagnostics.Value;
     }
 
     public async Task<NfseSubmissionResult> SubmitInvoiceAsync(
@@ -105,14 +108,9 @@ public class NationalApiClient : IApiClient
         isTestMode,
         apiUrl);
 
-        if (isTestMode)
-        {
-            // saving dpsXmlGZipB64 to file for debugging
-            var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "national-xml-output");
-            Directory.CreateDirectory(outputDirectory);
-            await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"dpsXmlGZipB64-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.txt"), dpsXmlGZipB64);
-            await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"finalXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml"), xml);
-        }
+        var dumpStamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+        await DumpXmlAsync($"dpsXmlGZipB64-{issuerCnpj}-{dumpStamp}.txt", dpsXmlGZipB64);
+        await DumpXmlAsync($"finalXml-{issuerCnpj}-{dumpStamp}.xml", xml);
 
         try
         {
@@ -196,7 +194,7 @@ public class NationalApiClient : IApiClient
                 throw new InvalidOperationException("Invalid response from National API: missing nfseXmlGZipB64");
             }
             var nfseXml = Base64DecodeAndGunzip(submissionResponse.nfseXmlGZipB64);
-            await WriteToFileAsync(issuerCnpj, nfseXml);
+            await DumpXmlAsync($"nfseXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml", nfseXml);
 
             var result = new NfseSubmissionResult
             {
@@ -278,12 +276,38 @@ public class NationalApiClient : IApiClient
         throw new NotImplementedException();
     }
 
-    private async Task WriteToFileAsync(string issuerCnpj, string xml)
+    /// <summary>
+    /// Grava XML em disco para depuração. Desligado por padrão
+    /// (<c>Diagnostics:XmlDumpEnabled</c>) e <b>nunca lança</b>.
+    ///
+    /// Os dois pontos importam: o mesmo XML já vai para
+    /// <c>invoice_emission_results</c>, então perder o arquivo não custa nada — mas
+    /// derrubar uma emissão já autorizada pelo SEFIN custa uma NFS-e. Foi o que
+    /// aconteceu quando o deploy passou a rodar com <c>read_only: true</c>: a
+    /// gravação estourava depois da autorização, o job era gravado como FAILED e a
+    /// chave de acesso se perdia. Ver issue #11.
+    /// </summary>
+    private async Task DumpXmlAsync(string fileName, string content)
     {
-        // saving nfseXmlGZipB64 to file for debugging
-        var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "national-xml-output");
-        Directory.CreateDirectory(outputDirectory);
-        await File.WriteAllTextAsync(Path.Combine(outputDirectory, $"nfseXml-{issuerCnpj}-{DateTime.UtcNow:yyyyMMddHHmmss}.xml"), xml);
+        if (!_diagnostics.XmlDumpEnabled)
+            return;
+
+        try
+        {
+            var dir = Path.IsPathRooted(_diagnostics.XmlDumpPath)
+                ? _diagnostics.XmlDumpPath
+                : Path.Combine(Directory.GetCurrentDirectory(), _diagnostics.XmlDumpPath);
+
+            Directory.CreateDirectory(dir);
+            await File.WriteAllTextAsync(Path.Combine(dir, fileName), content);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Não foi possível gravar o dump de XML em {Path}. A emissão segue normalmente.",
+                _diagnostics.XmlDumpPath);
+        }
     }
 }
 

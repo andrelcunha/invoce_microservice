@@ -6,8 +6,10 @@ using InvoiceMicroservice.Api.Extensions;
 using InvoiceMicroservice.Application.Commands.EmitInvoice;
 using InvoiceMicroservice.Domain.Entities;
 using InvoiceMicroservice.Domain.Interfaces;
+using InvoiceMicroservice.Infrastructure.Configuration;
 using InvoiceMicroservice.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace InvoiceMicroservice.Api;
 
@@ -34,6 +36,17 @@ public class Program
 
         var app = builder.Build();
 
+        // O dump de XML é conveniência de desenvolvimento. Se estiver ligado fora de
+        // Development, avisa em vez de silenciosamente ignorar — flag que mente custa
+        // mais caro que flag que falta.
+        var diagnostics = app.Services.GetRequiredService<IOptions<DiagnosticsConfig>>().Value;
+        if (diagnostics.XmlDumpEnabled && !app.Environment.IsDevelopment())
+        {
+            app.Logger.LogWarning(
+                "Diagnostics:XmlDumpEnabled está ligado em {Environment}. O XML das NFS-e será gravado em {Path}.",
+                app.Environment.EnvironmentName,
+                diagnostics.XmlDumpPath);
+        }
         // Seed the initial API client so the NestJS API can authenticate without a manual bootstrap step.
         // Idempotent: skips if the client already exists. Controlled by InitialClient:Id + InitialClient:ApiKey env vars.
         var initialClientId = app.Configuration["InitialClient:Id"];
