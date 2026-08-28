@@ -157,8 +157,12 @@ public class NationalXmlBuilder : IInvoiceXmlBuilder
         // NIF --  não preenchido se tpEmit = 1
         // cNaoNIF --  não preenchido se tpEmit = 1
         // CAEPF -- não preenchido se tpEmit = 1
-        // if (!string.IsNullOrWhiteSpace(issuer.MunicipalInscription))
-        //     prest.Add(El("IM", Helpers.OnlyDigits(issuer.MunicipalInscription)));
+        // Reativado em 27/08/2026: o SEFIN Nacional passou a exigir a IM do prestador
+        // (E0116), conforme o CNC NFS-e do município emissor. Estava comentada desde
+        // 9e9c41b (27/01), junto com xNome e endereço — esses dois seguem omitidos com
+        // razão, porque tpEmit=1 (o emissor é o próprio prestador).
+        if (!string.IsNullOrWhiteSpace(issuer.MunicipalInscription))
+            prest.Add(El("IM", Helpers.OnlyDigits(issuer.MunicipalInscription)));
 
         // O nome ou razão social do prestador de serviço não derve ser informado se o emissor for o próprio prestador
         //prest.Add(El("xNome", Helpers.EscapeXmlContent(issuer.Name)));
